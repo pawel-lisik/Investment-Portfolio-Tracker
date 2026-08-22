@@ -1,0 +1,395 @@
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-color: #2f2f2f;
+    --bottom-bar-bg: #252526;
+    --text-color: #d4d4d4;
+    --accent: #007acc;
+    --accent-hover: #005f9e;
+    --border: #3e3e42;
+    --success: #388e3c;
+}
+
+
+
+/* --- STYLE DOLNEGO PASKA (BOTTOM BAR) --- */
+
+
+body {
+    margin: 0;
+    padding: 0;
+
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    background-color: var(--bg-color);
+    color: var(--text-color);
+
+    height: 100vh;
+    overflow: hidden;
+}
+
+
+/* SCROLLUJĄCA ZAWARTOŚĆ */
+.main-content {
+    width: 100%;
+    height: 100vh;
+    box-sizing: border-box;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    padding: 30px;
+
+    /* żeby ostatnia zawartość nie chowała się pod paskiem */
+    padding-bottom: 110px;
+    padding-top: 110px;
+}
+
+.header {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 0;
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+
+    padding: 0px 30px;      /* 15px od góry/dołu, 30px od lewej/prawej (idealnie do main-content) */
+    box-sizing: border-box;  /* sprawia, że padding nie rozpycha szerokości 100%*/    
+
+    align-items: center;
+    background: rgba(37, 37, 38, 0.55);
+
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    z-index: 100;
+}
+
+/* SZKLANY BOTTOM BAR */
+.bottom-bar {
+    position: fixed;
+
+    left: 0;
+    right: 0;
+    bottom: 0;
+
+    width: 100%;
+
+    background: rgba(37, 37, 38, 0.55);
+
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+
+    z-index: 100;
+}
+
+
+.bottom-bar nav {
+    display: flex;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.nav-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    border-top: 3px solid transparent; 
+    color: #888;
+    padding: 12px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.nav-btn i {
+    font-size: 20px;
+    margin-bottom: 5px;
+}
+
+.nav-btn:hover {
+    background-color: #2a2d2e;
+    color: #ccc;
+}
+
+.nav-btn.active {
+    background-color: rgba(55, 55, 61, 0.50);
+    color: #f7a000;
+}
+
+/* --- GŁÓWNA ZAWARTOŚĆ --- */
+
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+
+
+.btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    color: white;
+    background-color: #444;
+}
+
+.btn.primary {
+    background-color: transparent;
+    font-size: 20px;
+}
+
+.btn.primary:hover {
+    background-color: transparent;
+}
+
+.btn.secondary {
+    background-color: var(--success);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background-color: var(--bottom-bar-bg);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.stat-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #aaa;
+}
+
+.stat-card h2 {
+    margin: 0;
+    font-size: 24px;
+    color: #fff;
+}
+
+.charts-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.chart-box {
+    background-color: var(--bottom-bar-bg);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.data-table th, .data-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.data-table th {
+    background-color: var(--bottom-bar-bg);
+    color: #fff;
+}
+
+.modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-box {
+    background-color: var(--bottom-bar-bg);
+    padding: 30px;
+    border-radius: 8px;
+    width: 400px;
+    border: 1px solid var(--border);
+}
+
+.form-group {
+    margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-row {
+    display: flex;
+    gap: 15px;
+}
+
+.form-row .form-group {
+    flex: 1;
+}
+
+label {
+    margin-bottom: 5px;
+    font-size: 13px;
+    color: #aaa;
+}
+
+input, select {
+    padding: 10px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border);
+    color: white;
+    border-radius: 4px;
+}
+
+.rate-info {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 15px;
+    min-height: 18px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.year-block {
+    background-color: var(--bottom-bar-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 25px;
+    padding: 20px;
+}
+
+.year-block h2 {
+    margin-top: 0;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+}
+
+.tax-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.tax-table th, .tax-table td {
+    padding: 10px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+}
+
+.tax-table th {
+    background-color: #2a2d2e;
+    color: #ccc;
+    font-weight: normal;
+}
+
+.tax-table th:first-child, .tax-table td:first-child {
+    text-align: left;
+    font-weight: bold;
+    color: #fff;
+}
+
+.tax-value {
+    color: #ff5252;
+}
+
+.profit-value {
+    color: #4CAF50;
+}
+
+
+/* --- STYLE DZIENNIKA ZAGRAŃ --- */
+.journal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+.journal-card {
+    background-color: var(--bottom-bar-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.journal-card h3 {
+    margin-top: 0;
+    color: var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.journal-details p {
+    margin: 5px 0;
+    font-size: 13px;
+    color: #ccc;
+}
+
+.journal-details strong {
+    color: #fff;
+}
+
+
+.journal-img {
+    width: 100%;
+    height: 220px; /* Sztywna wysokość dla każdej karty, żeby wszystkie były równe */
+    object-fit: contain; /* "contain" skaluje obraz tak, by widoczny był w całości (nic nie obcina) */
+    background-color: #1e1e1e; /* Ciemne tło na wypadek, gdyby zdjęcie miało inne proporcje */
+    border-radius: 4px;
+    margin-top: 15px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.journal-img:hover {
+    opacity: 0.8; /* Lekki efekt przyciemnienia przy najechaniu myszką */
+}
+
+textarea {
+    padding: 10px;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border);
+    color: white;
+    border-radius: 4px;
+    font-family: inherit;
+    resize: vertical;
+}

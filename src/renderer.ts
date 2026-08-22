@@ -1,0 +1,1512 @@
+// --- 1. ZMIENNE GLOBALNE I NAWIGACJA ---
+let allocChart: any = null;
+let growthChart: any = null;
+let profitBarChart: any = null;
+let roiChart: any = null;
+let bondsTreemapChart: any = null;
+let stocksTreemapChart: any = null;
+
+let currentStatView = 0; // 0: Depozyty, 1: Zysk Netto, 2: ROI
+let cachedTotalDeposits = 0;
+let cachedTotalNetProfit = 0;
+let currentJournalEntries: any[] = [];
+
+// --- USTAWIENIA (LocalStorage) ---
+let userBrokers = JSON.parse(localStorage.getItem('userBrokers') || '[]');
+if (userBrokers.length === 0) {
+    // Domyślna lista przy pierwszym uruchomieniu
+    userBrokers = ["Obligacje skarbowe", "Obligacje korporacyjne", "Akcje XTB", "Akcje Trading 212"];
+}
+let userPortfolioThreshold = parseInt(localStorage.getItem('userPortfolioThreshold') || '20');
+
+// Nawigacja
+const navBtns = document.querySelectorAll('.nav-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+
+navBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        navBtns.forEach(b => b.classList.remove('active'));
+        tabContents.forEach(c => c.classList.remove('active'));
+        
+        btn.classList.add('active');
+        const target = btn.getAttribute('data-target');
+        document.getElementById(target!)?.classList.add('active');
+        
+        // Zmień cytat, jeśli kliknięto w Dziennik
+        if (target === 'journal') {
+            setRandomQuote();
+        }
+    });
+});
+
+
+// --- 2. ZDARZENIA DOM (KLIKALNE KAFELKI I WIDOKI) ---
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- OBSŁUGA MODALA USTAWIŃ ---
+    const modalSettings = document.getElementById('modal-settings') as HTMLDivElement;
+    const btnSettings = document.getElementById('btn-settings');
+    const btnCloseSettings = document.getElementById('btn-close-settings');
+    const selectPortfolioType = document.getElementById('setting-portfolio-type') as HTMLSelectElement;
+    const inputNewBroker = document.getElementById('setting-new-broker') as HTMLInputElement;
+    const btnAddBroker = document.getElementById('btn-add-broker');
+    const brokersListContainer = document.getElementById('setting-brokers-list');
+
+    function renderSettingsBrokers() {
+        if (!brokersListContainer) return;
+        brokersListContainer.innerHTML = '';
+        userBrokers.forEach((broker: string, index: number) => {
+            brokersListContainer.innerHTML += `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <span>${broker}</span>
+                    <button class="btn btn-delete-broker-setting" data-index="${index}" style="padding: 2px 8px; font-size: 10px; background-color: #F44336;">Usuń</button>
+                </div>
+            `;
+        });
+        updateBrokerDropdowns();
+    }
+
+    function updateBrokerDropdowns() {
+        const profBrokerSelect = document.getElementById('prof-broker') as HTMLSelectElement;
+        if (profBrokerSelect) {
+            profBrokerSelect.innerHTML = '';
+            userBrokers.forEach((b: string) => {
+                profBrokerSelect.innerHTML += `<option value="${b}">${b}</option>`;
+            });
+        }
+    }
+
+    btnSettings?.addEventListener('click', () => {
+        if (selectPortfolioType) selectPortfolioType.value = userPortfolioThreshold.toString();
+        renderSettingsBrokers();
+        modalSettings?.classList.remove('hidden');
+    });
+
+    btnCloseSettings?.addEventListener('click', () => {
+        modalSettings?.classList.add('hidden');
+    });
+
+    selectPortfolioType?.addEventListener('change', () => {
+        userPortfolioThreshold = parseInt(selectPortfolioType.value);
+        localStorage.setItem('userPortfolioThreshold', userPortfolioThreshold.toString());
+        loadData(); // Odświeżamy natychmiast na żywo!
+    });
+
+    btnAddBroker?.addEventListener('click', () => {
+        const val = inputNewBroker.value.trim();
+        if (val && !userBrokers.includes(val)) {
+            userBrokers.push(val);
+            localStorage.setItem('userBrokers', JSON.stringify(userBrokers));
+            inputNewBroker.value = '';
+            renderSettingsBrokers();
+        }
+    });
+
+    brokersListContainer?.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.classList.contains('btn-delete-broker-setting')) {
+            const index = parseInt(target.getAttribute('data-index')!);
+            userBrokers.splice(index, 1);
+            localStorage.setItem('userBrokers', JSON.stringify(userBrokers));
+            renderSettingsBrokers();
+        }
+    });
+
+    // Inicjacja selecta przy starcie
+    updateBrokerDropdowns();
+
+    document.getElementById('btn-back-to-stocks')?.addEventListener('click', () => {
+        document.querySelector<HTMLElement>('[data-target="portfolio-stocks"]')?.click();
+    });
+    
+    // Przełączanie widoku Wykres <-> Tabela w podsumowaniu
+    const btnToggleAlloc = document.getElementById('btn-toggle-allocation');
+    const viewChart = document.getElementById('allocation-view-chart');
+    const viewTable = document.getElementById('allocation-view-table');
+
+    if (btnToggleAlloc && viewChart && viewTable) {
+        viewTable.style.display = 'none';
+
+        btnToggleAlloc.addEventListener('click', () => {
+            if (viewChart.style.display !== 'none') {
+                viewChart.style.display = 'none';
+                viewTable.style.display = 'block';
+                btnToggleAlloc.innerHTML = '<i class="fas fa-chart-pie"></i> Wykres';
+            } else {
+                viewChart.style.display = 'block';
+                viewTable.style.display = 'none';
+                btnToggleAlloc.innerHTML = '<i class="fas fa-table"></i> Tabela ';
+            }
+        });
+    }
+
+    // Przełączanie widoku Wykres <-> Tabela dla Wzrostu Portfela (Prawy górny)
+    const btnToggleGrowth = document.getElementById('btn-toggle-growth');
+    const viewGrowthChart = document.getElementById('growth-view-chart');
+    const viewGrowthTable = document.getElementById('growth-view-table');
+
+    if (btnToggleGrowth && viewGrowthChart && viewGrowthTable) {
+        viewGrowthTable.style.display = 'none';
+
+        btnToggleGrowth.addEventListener('click', () => {
+            if (viewGrowthChart.style.display !== 'none') {
+                viewGrowthChart.style.display = 'none';
+                viewGrowthTable.style.display = 'block';
+                btnToggleGrowth.innerHTML = '<i class="fas fa-chart-line"></i> Wykres';
+            } else {
+                viewGrowthChart.style.display = 'block';
+                viewGrowthTable.style.display = 'none';
+                btnToggleGrowth.innerHTML = '<i class="fas fa-table"></i> Tabela';
+            }
+        });
+    }
+
+    // Klikalny kafelek "Całkowita wartość depozytów"
+    const statCard = document.getElementById('clickable-stat-card');
+    const statTitle = document.getElementById('stat-card-title');
+    const statVal = document.getElementById('total-assets-val');
+
+    statCard?.addEventListener('click', () => {
+        currentStatView = (currentStatView + 1) % 3;
+        if (!statTitle || !statVal) return;
+
+        if (currentStatView === 0) {
+            statTitle.innerText = 'Całkowita wartość depozytów (PLN)';
+            statVal.innerText = `${cachedTotalDeposits.toFixed(2)} zł`;
+            statVal.style.color = '#fff';
+        } else if (currentStatView === 1) {
+            statTitle.innerText = 'Całkowity zysk netto (PLN)';
+            statVal.innerText = `${cachedTotalNetProfit.toFixed(2)} zł`;
+            statVal.style.color = cachedTotalNetProfit >= 0 ? '#4CAF50' : '#ff5252';
+        } else if (currentStatView === 2) {
+            statTitle.innerText = 'Stopa zwrotu od depozytu (%)';
+            const roi = cachedTotalDeposits > 0 ? (cachedTotalNetProfit / cachedTotalDeposits) * 100 : 0;
+            statVal.innerText = `${roi.toFixed(2)} %`;
+            statVal.style.color = roi >= 0 ? '#4CAF50' : '#ff5252';
+        }
+    });
+
+
+// --- OBSŁUGA MODALA STRATEGII ---
+    const modalStrategy = document.getElementById('modal-strategy');
+    const btnOpenStrategy = document.getElementById('open-strategy');
+    const btnCloseStrategy = document.getElementById('btn-close-strategy');
+    const btnEditStrategy = document.getElementById('btn-edit-strategy');
+    const btnSaveStrategy = document.getElementById('btn-save-strategy');
+    const btnCancelStrategy = document.getElementById('btn-cancel-strategy'); // Dodany przycisk
+    const strategyViewMode = document.getElementById('strategy-view-mode');
+    const strategyEditMode = document.getElementById('strategy-edit-mode');
+    const strategyTextarea = document.getElementById('strategy-textarea') as HTMLTextAreaElement;
+
+    // Pobieranie strategii przy starcie (lub po anulowaniu)
+    function loadStrategy() {
+        const savedStrategy = localStorage.getItem('userStrategy') || 'Brak zapisanej strategii. Kliknij "Edytuj Strategię", aby wkleić swoje zasady.';
+        if (strategyViewMode) strategyViewMode.innerText = savedStrategy;
+        if (strategyTextarea) strategyTextarea.value = savedStrategy;
+    }
+    loadStrategy();
+
+    // Otwieranie okienka (zawsze otwiera się w trybie czytania)
+    btnOpenStrategy?.addEventListener('click', () => {
+        loadStrategy();
+        
+        if (strategyViewMode) strategyViewMode.style.display = 'block';
+        if (strategyEditMode) strategyEditMode.style.display = 'none';
+        
+        if (btnEditStrategy) btnEditStrategy.style.display = 'block';
+        if (btnSaveStrategy) btnSaveStrategy.style.display = 'none';
+        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; // Ukryj Anuluj
+        
+        modalStrategy?.classList.remove('hidden');
+    });
+
+    // Zamykanie okienka krzyżykiem
+    btnCloseStrategy?.addEventListener('click', () => {
+        modalStrategy?.classList.add('hidden');
+    });
+
+    // Przełączanie w tryb edycji
+    btnEditStrategy?.addEventListener('click', () => {
+        if (strategyViewMode) strategyViewMode.style.display = 'none';
+        if (strategyEditMode) strategyEditMode.style.display = 'block';
+        
+        if (btnEditStrategy) btnEditStrategy.style.display = 'none';
+        if (btnSaveStrategy) btnSaveStrategy.style.display = 'block';
+        if (btnCancelStrategy) btnCancelStrategy.style.display = 'block'; // Pokaż Anuluj
+    });
+
+    // ANULOWANIE ZMIAN
+    btnCancelStrategy?.addEventListener('click', () => {
+        loadStrategy(); // Resetuje textarea do ostatnio zapisanej wersji
+        
+        if (strategyEditMode) strategyEditMode.style.display = 'none';
+        if (strategyViewMode) strategyViewMode.style.display = 'block';
+        
+        if (btnSaveStrategy) btnSaveStrategy.style.display = 'none';
+        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; // Ukryj Anuluj
+        if (btnEditStrategy) btnEditStrategy.style.display = 'block';
+    });
+
+    // Zapisywanie zmian i powrót do trybu czytania
+    btnSaveStrategy?.addEventListener('click', () => {
+        const newStrategy = strategyTextarea?.value || '';
+        localStorage.setItem('userStrategy', newStrategy);
+        loadStrategy(); 
+        
+        if (strategyEditMode) strategyEditMode.style.display = 'none';
+        if (strategyViewMode) strategyViewMode.style.display = 'block';
+        
+        if (btnSaveStrategy) btnSaveStrategy.style.display = 'none';
+        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; // Ukryj Anuluj
+        if (btnEditStrategy) btnEditStrategy.style.display = 'block';
+    });
+
+});
+
+// --- 3. OBSŁUGA MODALI WPŁAT I ZYSKÓW ---
+const modalDeposit = document.getElementById('modal-deposit') as HTMLDivElement;
+const modalProfit = document.getElementById('modal-profit') as HTMLDivElement;
+
+document.getElementById('btn-new-deposit')?.addEventListener('click', () => {
+    (document.getElementById('dep-date') as HTMLInputElement).valueAsDate = new Date();
+    modalDeposit?.classList.remove('hidden');
+});
+document.getElementById('btn-cancel-deposit')?.addEventListener('click', () => modalDeposit?.classList.add('hidden'));
+
+document.getElementById('btn-new-profit')?.addEventListener('click', () => {
+    (document.getElementById('prof-date') as HTMLInputElement).valueAsDate = new Date();
+    modalProfit?.classList.remove('hidden');
+});
+document.getElementById('btn-cancel-profit')?.addEventListener('click', () => modalProfit?.classList.add('hidden'));
+
+
+// --- 4. OBSŁUGA WALUT I NBP ---
+// --- 4. OBSŁUGA WALUT I NBP ---
+const depCurrency = document.getElementById('dep-currency') as HTMLSelectElement;
+const depAmount = document.getElementById('dep-amount') as HTMLInputElement;
+const depDate = document.getElementById('dep-date') as HTMLInputElement;
+const depRateInfo = document.getElementById('dep-rate-info') as HTMLDivElement;
+let currentRate = 1.0;
+
+async function updateRate() {
+    if (!depCurrency || !depAmount || !depRateInfo || !depDate) return;
+    const currency = depCurrency.value;
+    const amount = parseFloat(depAmount.value) || 0;
+    const selectedDate = depDate.value; 
+    
+    if (currency === 'PLN') {
+        currentRate = 1.0;
+        depRateInfo.innerText = '';
+        return;
+    }
+
+    if (!selectedDate) {
+        depRateInfo.innerText = 'Wybierz datę, aby pobrać kurs historyczny NBP.';
+        currentRate = 1.0;
+        return;
+    }
+
+    depRateInfo.innerText = 'Pobieranie kursu NBP...';
+
+    // Inteligentne szukanie kursu (jeśli weekend, cofa się max o 5 dni do ostatniego roboczego)
+    let dateObj = new Date(selectedDate);
+    let foundRate = null;
+    let rateDate = '';
+
+    for (let i = 0; i < 5; i++) {
+        // Formatowanie daty do YYYY-MM-DD
+        const dStr = dateObj.toISOString().split('T')[0];
+        try {
+            const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${currency}/${dStr}?format=json`);
+            if (res.ok) {
+                const data = await res.json();
+                foundRate = data.rates[0].mid;
+                rateDate = dStr;
+                break; // Znaleziono kurs, przerywamy pętlę!
+            }
+        } catch (e) {
+            // Ignorujemy błędy sieciowe, pętla pójdzie dalej
+        }
+        // Cofnij o jeden dzień
+        dateObj.setDate(dateObj.getDate() - 1);
+    }
+
+    if (foundRate !== null) {
+        currentRate = foundRate;
+        depRateInfo.innerText = `Kurs NBP z ${rateDate}: ${currentRate.toFixed(4)} PLN. Przeliczono na: ${(amount * currentRate).toFixed(2)} PLN`;
+    } else {
+        depRateInfo.innerText = 'Nie udało się pobrać kursu historycznego NBP. Użyto przelicznika 1:1.';
+        currentRate = 1.0;
+    }
+}
+
+// Nasłuchujemy zmian na walucie, kwocie ORAZ dacie
+depCurrency?.addEventListener('change', updateRate);
+depAmount?.addEventListener('input', updateRate);
+depDate?.addEventListener('change', updateRate);
+
+// ZAPIS WPŁAT I ZYSKÓW
+document.getElementById('btn-save-deposit')?.addEventListener('click', async () => {
+    const amount = parseFloat(depAmount?.value) || 0;
+    const deposit = {
+        date: (document.getElementById('dep-date') as HTMLInputElement).value,
+        amount: amount,
+        currency: depCurrency.value,
+        exchange_rate: currentRate,
+        amount_pln: amount * currentRate,
+        destination: (document.getElementById('dep-dest') as HTMLSelectElement).value
+    };
+
+    await (window as any).api.addDeposit(deposit);
+    modalDeposit?.classList.add('hidden');
+    loadData();
+});
+
+document.getElementById('btn-save-profit')?.addEventListener('click', async () => {
+    const profit = {
+        date: (document.getElementById('prof-date') as HTMLInputElement).value,
+        broker: (document.getElementById('prof-broker') as HTMLSelectElement).value,
+        category: (document.getElementById('prof-cat') as HTMLSelectElement).value,
+        amount: parseFloat((document.getElementById('prof-amount') as HTMLInputElement).value) || 0,
+        tax: parseFloat((document.getElementById('prof-tax') as HTMLInputElement).value) || 0
+    };
+
+    await (window as any).api.addProfit(profit);
+    modalProfit?.classList.add('hidden');
+    loadData();
+});
+
+// --- 5. GŁÓWNA LOGIKA ŁADOWANIA DANYCH ---
+async function loadData() {
+    const deposits = await (window as any).api.getDeposits();
+    const profits = await (window as any).api.getProfits();
+    
+    // TABELA: HISTORIA WPŁAT
+    const tbodyDep = document.getElementById('deposits-tbody');
+    if (tbodyDep) tbodyDep.innerHTML = '';
+    
+    let totalAssetsPLN = 0;
+    const allocation: Record<string, number> = {};
+
+    deposits.forEach((d: any) => {
+        totalAssetsPLN += d.amount_pln;
+        allocation[d.destination] = (allocation[d.destination] || 0) + d.amount_pln;
+
+        if (tbodyDep) {
+            tbodyDep.innerHTML += `
+                <tr>
+                    <td>${d.date}</td>
+                    <td>${d.amount} ${d.currency}</td>
+                    <td>${d.exchange_rate > 1 ? d.exchange_rate.toFixed(4) : '-'}</td>
+                    <td>${d.amount_pln.toFixed(2)} zł</td>
+                    <td>${d.destination}</td>
+                </tr>
+            `;
+        }
+    });
+
+    cachedTotalDeposits = totalAssetsPLN;
+
+    // TABELA ALOKACJI WIDOK ZAMIAST WYKRESU
+    const allocMap = {
+        akcje: (allocation['Akcje'] || 0) + (allocation['Akcje 2'] || 0),
+        skarbowe: allocation['Obligacje skarbowe'] || 0,
+        korpo: allocation['Obligacje korporacyjne'] || 0,
+        konto: allocation['Konto oszczędnościowe'] || 0,
+        inne: allocation['Inne'] || 0
+    };
+
+    const tbodyAlloc = document.getElementById('allocation-tbody');
+    if (tbodyAlloc) {
+        tbodyAlloc.innerHTML = `
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px;">Akcje</td>
+                <td style="padding: 10px; text-align: right;">${allocMap.akcje.toFixed(2)} zł</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px;">Obligacje krajowe</td>
+                <td style="padding: 10px; text-align: right;">${allocMap.skarbowe.toFixed(2)} zł</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px;">Obligacje korporacyjne i zagraniczne</td>
+                <td style="padding: 10px; text-align: right;">${allocMap.korpo.toFixed(2)} zł</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px;">Konta oszczędnościowe <small style="color: #aaa;">(wpisz odpowiednie tutaj)</small></td>
+                <td style="padding: 10px; text-align: right;">${allocMap.konto.toFixed(2)} zł</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px;">Inne <small style="color: #aaa;">(wpisz odpowiednie tutaj)</small></td>
+                <td style="padding: 10px; text-align: right;">${allocMap.inne.toFixed(2)} zł</td>
+            </tr>
+        `;
+        const allocTotalEl = document.getElementById('allocation-total');
+        if (allocTotalEl) allocTotalEl.innerText = `${totalAssetsPLN.toFixed(2)} zł`;
+
+        // LOGIKA POWIADOMIENIA O PRZEKROCZENIU RYZYKA (PANCERNE CHOWANIE)
+        const portfolioWarning = document.getElementById('portfolio-warning');
+        const warningPercent = document.getElementById('warning-percent');
+        
+        if (portfolioWarning && warningPercent) {
+            if (totalAssetsPLN > 0) {
+                const stocksPercent = (allocMap.akcje / totalAssetsPLN) * 100;
+                if (stocksPercent > userPortfolioThreshold) {
+                    warningPercent.innerText = `${stocksPercent.toFixed(1)}%`;
+                    portfolioWarning.classList.remove('hidden');
+                    portfolioWarning.style.display = 'block'; // Twarde wymuszenie
+                } else {
+                    portfolioWarning.classList.add('hidden');
+                    portfolioWarning.style.display = 'none'; // Twarde wymuszenie
+                }
+            } else {
+                portfolioWarning.classList.add('hidden');
+                portfolioWarning.style.display = 'none';
+            }
+        }
+    }
+
+
+    // TABELE PODATKÓW WRAZ Z SUMĄ NETTO ROKU
+    const taxesContainer = document.getElementById('taxes-container');
+    if(taxesContainer) taxesContainer.innerHTML = '';
+
+    const groupedByYear: Record<string, Record<string, Record<string, {profit: number, tax: number}>>> = {};
+
+    // Dynamicznie grupujemy historię
+    profits.forEach((p: any) => {
+        const year = p.date.substring(0, 4); 
+        if (!groupedByYear[year]) groupedByYear[year] = {};
+        
+        if (!groupedByYear[year][p.broker]) {
+            groupedByYear[year][p.broker] = { "dywidendy": {profit: 0, tax: 0}, "sprzedaz": {profit: 0, tax: 0}, "odsetki": {profit: 0, tax: 0} };
+        }
+        
+        if (groupedByYear[year][p.broker][p.category]) {
+            groupedByYear[year][p.broker][p.category].profit += p.amount;
+            groupedByYear[year][p.broker][p.category].tax += p.tax;
+        }
+    });
+
+    const years = Object.keys(groupedByYear).sort().reverse();
+    
+    years.forEach(year => {
+        let totalYearProfit = 0;
+        let totalYearTax = 0;
+        const activeBrokersInYear = Object.keys(groupedByYear[year]);
+
+        activeBrokersInYear.forEach(b => {
+            const data = groupedByYear[year][b];
+            totalYearProfit += data['dywidendy'].profit + data['sprzedaz'].profit + data['odsetki'].profit;
+            totalYearTax += data['dywidendy'].tax + data['sprzedaz'].tax + data['odsetki'].tax;
+        });
+
+        const netProfit = totalYearProfit - totalYearTax;
+        const profitColor = netProfit >= 0 ? '#4CAF50' : '#ff5252'; 
+
+        let tableHTML = `
+        <div class="year-block">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">
+                <h2 style="margin: 0; padding: 0; border: none; color: var(--accent);">Rok ${year}</h2>
+                <div style="text-align: right;">
+                    <span style="font-size: 12px; color: #aaa;">Łączny zysk netto:</span><br>
+                    <strong style="font-size: 18px; color: ${profitColor};">${netProfit.toFixed(2)} zł</strong>
+                </div>
+            </div>
+            <table class="tax-table">
+                <thead>
+                    <tr>
+                        <th>Komponent</th>
+                        <th>Zysk (Dywidendy)</th><th>Podatek (Dywidendy)</th>
+                        <th>Zysk (Sprzedaż)</th><th>Podatek (Sprzedaż)</th>
+                        <th>Zysk (Odsetki)</th><th>Podatek (Odsetki)</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        activeBrokersInYear.forEach(b => {
+            const data = groupedByYear[year][b];
+            tableHTML += `
+                <tr>
+                    <td>${b}</td>
+                    <td class="profit-value">${data['dywidendy'].profit.toFixed(2)} zł</td>
+                    <td class="tax-value">${data['dywidendy'].tax > 0 ? '-' : ''}${data['dywidendy'].tax.toFixed(2)} zł</td>
+                    <td class="profit-value">${data['sprzedaz'].profit.toFixed(2)} zł</td>
+                    <td class="tax-value">${data['sprzedaz'].tax > 0 ? '-' : ''}${data['sprzedaz'].tax.toFixed(2)} zł</td>
+                    <td class="profit-value">${data['odsetki'].profit.toFixed(2)} zł</td>
+                    <td class="tax-value">${data['odsetki'].tax > 0 ? '-' : ''}${data['odsetki'].tax.toFixed(2)} zł</td>
+                </tr>
+            `;
+        });
+
+        tableHTML += `</tbody></table></div>`;
+        if(taxesContainer) taxesContainer.innerHTML += tableHTML;
+    });
+
+    renderCharts(allocation, deposits, profits);
+    loadAssetsData();
+    loadJournalData();
+}
+
+// --- 6. RYSOWANIE WYKRESÓW GŁÓWNYCH ---
+function renderCharts(allocation: Record<string, number>, deposits: any[], profits: any[]) {
+    const ctxAlloc = document.getElementById('allocationChart') as HTMLCanvasElement;
+    if (allocChart) allocChart.destroy();
+
+    if (ctxAlloc) {
+        allocChart = new (window as any).Chart(ctxAlloc, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(allocation),
+                datasets: [{
+                    data: Object.values(allocation),
+                    backgroundColor: ['#2196F3', '#4CAF50', '#F44336', '#FFC107', '#9C27B0', '#FF5722']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#d4d4d4' } },
+                    title: { display: true, text: 'Skład Portfolio', color: '#fff' }
+                }
+            }
+        });
+    }
+
+    const ctxGrowth = document.getElementById('growthChart') as HTMLCanvasElement;
+    if (growthChart) growthChart.destroy();
+
+    const sortedDep = [...deposits].reverse();
+    let cumulativeDeposits = 0;
+    const labels: string[] = [];
+    const depositsData: number[] = [];
+    const totalAssetsData: number[] = [];
+
+    for (const d of sortedDep) {
+        labels.push(d.date);
+        cumulativeDeposits += d.amount_pln;
+        depositsData.push(cumulativeDeposits);
+
+        let cumulativeProfitsAtDate = 0;
+        for (const p of profits) {
+            if (p.date <= d.date) {
+               cumulativeProfitsAtDate += p.amount;
+            }
+        }
+        totalAssetsData.push(cumulativeDeposits + cumulativeProfitsAtDate);
+    }
+
+    const yearlyGrowth: Record<string, { dep: number, prof: number }> = {};
+    
+    deposits.forEach((d: any) => {
+        const y = d.date.substring(0, 4);
+        if (!yearlyGrowth[y]) yearlyGrowth[y] = { dep: 0, prof: 0 };
+        yearlyGrowth[y].dep += d.amount_pln;
+    });
+
+    profits.forEach((p: any) => {
+        const y = p.date.substring(0, 4);
+        if (!yearlyGrowth[y]) yearlyGrowth[y] = { dep: 0, prof: 0 };
+        yearlyGrowth[y].prof += (p.amount - p.tax);
+    });
+
+    const allYears = Object.keys(yearlyGrowth).sort();
+    const tbodyGrowth = document.getElementById('growth-tbody');
+    
+    if (tbodyGrowth) {
+        tbodyGrowth.innerHTML = '';
+        let runningDep = 0;
+        let runningProf = 0;
+
+        allYears.forEach(year => {
+            runningDep += yearlyGrowth[year].dep;
+            runningProf += yearlyGrowth[year].prof;
+            const runningTotal = runningDep + runningProf;
+
+            tbodyGrowth.innerHTML += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); background-color: rgba(255,255,255,0.02);">
+                    <td style="padding: 8px; text-align: left;"><strong>${year}</strong></td>
+                    <td style="padding: 8px;">${runningDep.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$& ')}</td>
+                    <td style="padding: 8px;">${runningProf.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$& ')}</td>
+                    <td style="padding: 8px; font-weight: bold;">${runningTotal.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$& ')}</td>
+                </tr>
+            `;
+        });
+    }
+
+    if (ctxGrowth) {
+        growthChart = new (window as any).Chart(ctxGrowth, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Suma Depozytów i Zysków (PLN)',
+                        data: totalAssetsData,
+                        borderColor: '#F44336',
+                        backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                        fill: false,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Suma Depozytów (PLN)',
+                        data: depositsData,
+                        borderColor: '#2196F3',
+                        backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#d4d4d4' } },
+                    title: { display: true, text: 'Wzrost Wartości Portfela', color: '#fff' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context: any) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed.y !== null) label += new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(context.parsed.y);
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#aaa' }, grid: { color: '#333' } },
+                    y: { ticks: { color: '#aaa' }, grid: { color: '#333' } }
+                }
+            }
+        });
+    }
+
+    const ctxProfitBar = document.getElementById('profitBarChart') as HTMLCanvasElement;
+    const ctxRoi = document.getElementById('roiChart') as HTMLCanvasElement;
+    if (profitBarChart) profitBarChart.destroy();
+    if (roiChart) roiChart.destroy();
+
+    const yearlyProfits: Record<string, { stocksNet: number, bondsSkarboweNet: number, bondsKorpoNet: number, otherNet: number, totalNet: number }> = {};
+    let grandTotalNetProfit = 0; 
+
+    profits.forEach(p => {
+        const year = p.date.substring(0, 4);
+        if (!yearlyProfits[year]) {
+            yearlyProfits[year] = { stocksNet: 0, bondsSkarboweNet: 0, bondsKorpoNet: 0, otherNet: 0, totalNet: 0 };
+        }
+
+        const netAmount = p.amount - p.tax;
+        yearlyProfits[year].totalNet += netAmount;
+        grandTotalNetProfit += netAmount;
+
+        if (p.broker.includes('Akcje')) yearlyProfits[year].stocksNet += netAmount;
+        else if (p.broker === 'Obligacje skarbowe') yearlyProfits[year].bondsSkarboweNet += netAmount;
+        else if (p.broker === 'Obligacje korporacyjne') yearlyProfits[year].bondsKorpoNet += netAmount;
+        else yearlyProfits[year].otherNet += netAmount;
+    });
+
+    cachedTotalNetProfit = grandTotalNetProfit;
+
+    const statVal = document.getElementById('total-assets-val');
+    if (statVal && currentStatView === 0) { statVal.innerText = `${cachedTotalDeposits.toFixed(2)} zł`; statVal.style.color = '#fff'; }
+    if (statVal && currentStatView === 1) { statVal.innerText = `${cachedTotalNetProfit.toFixed(2)} zł`; statVal.style.color = cachedTotalNetProfit >= 0 ? '#4CAF50' : '#ff5252'; }
+    if (statVal && currentStatView === 2) { 
+        const roi = cachedTotalDeposits > 0 ? (cachedTotalNetProfit / cachedTotalDeposits) * 100 : 0;
+        statVal.innerText = `${roi.toFixed(2)} %`; 
+        statVal.style.color = roi >= 0 ? '#4CAF50' : '#ff5252'; 
+    }
+
+    const sortedYears = Object.keys(yearlyProfits).sort();
+    if (sortedYears.length === 0) {
+        sortedYears.push(new Date().getFullYear().toString());
+        yearlyProfits[sortedYears[0]] = { stocksNet: 0, bondsSkarboweNet: 0, bondsKorpoNet: 0, otherNet: 0, totalNet: 0 };
+    }
+
+    const dataStocks = sortedYears.map(y => yearlyProfits[y].stocksNet);
+    const dataBondsSkarbowe = sortedYears.map(y => yearlyProfits[y].bondsSkarboweNet);
+    const dataBondsKorpo = sortedYears.map(y => yearlyProfits[y].bondsKorpoNet);
+    const dataOther = sortedYears.map(y => yearlyProfits[y].otherNet);
+
+    if (ctxProfitBar) {
+        profitBarChart = new (window as any).Chart(ctxProfitBar, {
+            type: 'bar',
+            data: {
+                labels: sortedYears,
+                datasets: [
+                    { label: 'Zysk z akcji (netto)', data: dataStocks, backgroundColor: '#4285F4' },
+                    { label: 'Obligacje skarbowe (netto)', data: dataBondsSkarbowe, backgroundColor: '#EA4335' },
+                    { label: 'Obligacje korporacyjne (netto)', data: dataBondsKorpo, backgroundColor: '#FBBC05' },
+                    { label: 'Inne (netto)', data: dataOther, backgroundColor: '#34A853' }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                responsive: true,
+                scales: { x: { stacked: true }, y: { stacked: true } },
+                plugins: { title: { display: true, text: 'Zysk z inwestycji wg lat (Netto)', color: '#fff' } }
+            }
+        });
+    }
+
+    const depositsByYear: Record<string, number> = {};
+    for (const d of sortedDep) {
+        const y = d.date.substring(0, 4);
+        depositsByYear[y] = (depositsByYear[y] || 0) + d.amount_pln;
+    }
+
+    let runningDep = 0;
+    const roiData = sortedYears.map(year => {
+        runningDep += (depositsByYear[year] || 0);
+        if (runningDep === 0) return 0;
+        return (yearlyProfits[year].totalNet / runningDep) * 100;
+    });
+
+    if (ctxRoi) {
+        roiChart = new (window as any).Chart(ctxRoi, {
+            type: 'line',
+            data: {
+                labels: sortedYears,
+                datasets: [{
+                    label: 'Stopa zwrotu (%)',
+                    data: roiData,
+                    borderColor: '#4285F4',
+                    backgroundColor: 'rgba(66, 133, 244, 0.1)',
+                    fill: false,
+                    tension: 0.4 
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                responsive: true,
+                plugins: {
+                    legend: { display: false }, 
+                    title: { display: true, text: 'Stopa zwrotu od depozytu (Skala Roku)', color: '#fff' },
+                    tooltip: { callbacks: { label: (ctx: any) => `${ctx.parsed.y.toFixed(2)} %` } }
+                },
+                scales: {
+                    y: { ticks: { callback: (val: any) => val + '%' } }
+                }
+            }
+        });
+    }
+}
+
+// --- 7. OBSŁUGA PORTFELA (AKTYWA) ---
+const modalAsset = document.getElementById('modal-asset') as HTMLDivElement;
+const assetTypeSelect = document.getElementById('asset-type') as HTMLSelectElement;
+const assetCouponFields = document.getElementById('asset-coupon-fields') as HTMLDivElement;
+const assetNameInput = document.getElementById('asset-name') as HTMLInputElement;
+const assetPriceInput = document.getElementById('asset-price') as HTMLInputElement;
+
+assetNameInput?.addEventListener('change', async () => {
+    if (assetTypeSelect.value === 'Akcje') {
+        const ticker = assetNameInput.value.trim().toUpperCase();
+        if (ticker) {
+            assetPriceInput.placeholder = "Pobieranie...";
+            const price = await (window as any).api.getTickerPrice(ticker);
+            if (price !== null) {
+                assetPriceInput.value = price.toFixed(2);
+                assetPriceInput.placeholder = "";
+            } else {
+                assetPriceInput.placeholder = "Nie znaleziono tickera";
+            }
+        }
+    }
+});
+
+document.getElementById('btn-new-bond')?.addEventListener('click', () => {
+    (document.getElementById('asset-date') as HTMLInputElement).valueAsDate = new Date();
+    if(assetTypeSelect) assetTypeSelect.value = 'Obligacje skarbowe';
+    if(assetCouponFields) assetCouponFields.style.display = 'none';
+    modalAsset?.classList.remove('hidden');
+});
+
+document.getElementById('btn-new-stock')?.addEventListener('click', () => {
+    (document.getElementById('asset-date') as HTMLInputElement).valueAsDate = new Date();
+    if(assetTypeSelect) assetTypeSelect.value = 'Akcje';
+    if(assetCouponFields) assetCouponFields.style.display = 'none';
+    modalAsset?.classList.remove('hidden');
+});
+
+document.getElementById('btn-cancel-asset')?.addEventListener('click', () => modalAsset?.classList.add('hidden'));
+
+assetTypeSelect?.addEventListener('change', () => {
+    if (assetTypeSelect.value === 'Obligacje korporacyjne') {
+        if(assetCouponFields) assetCouponFields.style.display = 'block';
+    } else {
+        if(assetCouponFields) assetCouponFields.style.display = 'none';
+    }
+});
+
+document.getElementById('btn-save-asset')?.addEventListener('click', async () => {
+    const asset = {
+        name: (document.getElementById('asset-name') as HTMLInputElement).value,
+        type: assetTypeSelect.value,
+        purchase_date: (document.getElementById('asset-date') as HTMLInputElement).value,
+        price: parseFloat((document.getElementById('asset-price') as HTMLInputElement).value) || 0,
+        quantity: parseFloat((document.getElementById('asset-quantity') as HTMLInputElement).value) || 0,
+        coupon_date: (document.getElementById('asset-coupon-date') as HTMLInputElement).value || null,
+        coupon_rate: parseFloat((document.getElementById('asset-coupon-rate') as HTMLInputElement).value) || 0,
+        coupon_freq: (document.getElementById('asset-coupon-freq') as HTMLSelectElement).value
+    };
+
+    await (window as any).api.addAsset(asset);
+    modalAsset?.classList.add('hidden');
+    loadAssetsData();
+});
+
+async function loadAssetsData() {
+    const assets = await (window as any).api.getAssets();
+
+    const tbodyBonds = document.getElementById('bonds-tbody');
+    const tbodyStocks = document.getElementById('stocks-tbody');
+    if (tbodyBonds) tbodyBonds.innerHTML = '';
+    if (tbodyStocks) tbodyStocks.innerHTML = '';
+
+    const bondsData: any[] = [];
+    const stocksData: any[] = [];
+
+    assets.forEach((a: any) => {
+        const totalValue = a.price * a.quantity;
+        const couponInfo = a.type === 'Obligacje korporacyjne' && a.coupon_rate 
+            ? `${a.coupon_rate}% (${a.coupon_freq})<br><small>Wypłata: ${a.coupon_date}</small>` 
+            : '-';
+
+        const rowHTML = `
+            <tr>
+                <td><strong>${a.name}</strong></td>
+                <td>${a.type}</td>
+                <td>${a.purchase_date}</td>
+                <td>${a.quantity} szt. <br><small>po ${a.price.toFixed(2)}</small></td>
+                <td style="color: #4CAF50; font-weight: bold;">${totalValue.toFixed(2)} zł</td>
+                <td>${couponInfo}</td>
+                <td>
+                    <button class="btn btn-edit-qty" data-id="${a.id}" style="padding: 5px; font-size: 11px;">Edytuj Ilość</button>
+                    <button class="btn btn-delete-asset" data-id="${a.id}" style="padding: 5px; font-size: 11px; background-color: #F44336;">Usuń</button>
+                </td>
+            </tr>
+        `;
+
+        if (a.type.includes('Obligacje')) {
+            bondsData.push({ name: a.name, value: totalValue, type: a.type });
+            if (tbodyBonds) tbodyBonds.innerHTML += rowHTML;
+        } else {
+            stocksData.push({ name: a.name, value: totalValue, type: a.type });
+            if (tbodyStocks) tbodyStocks.innerHTML += rowHTML;
+        }
+    });
+
+    renderTreemaps(bondsData, stocksData);
+}
+
+const modalEditQty = document.getElementById('modal-edit-qty') as HTMLDivElement;
+document.getElementById('btn-cancel-qty')?.addEventListener('click', () => modalEditQty?.classList.add('hidden'));
+
+const handleTableClick = async (e: Event) => {
+    const target = e.target as HTMLElement;
+    const editBtn = target.closest('.btn-edit-qty');
+    const deleteBtn = target.closest('.btn-delete-asset');
+
+    if (editBtn) {
+        const id = editBtn.getAttribute('data-id');
+        const editIdEl = document.getElementById('edit-qty-id') as HTMLInputElement;
+        const editValEl = document.getElementById('edit-qty-val') as HTMLInputElement;
+        if(editIdEl) editIdEl.value = id!;
+        if(editValEl) editValEl.value = ""; 
+        modalEditQty?.classList.remove('hidden');
+    } 
+    else if (deleteBtn) {
+        const id = parseInt(deleteBtn.getAttribute('data-id')!);
+        if (confirm("Czy na pewno chcesz całkowicie usunąć to aktywo z portfela?")) {
+            await (window as any).api.deleteAsset(id);
+            loadAssetsData();
+        }
+    }
+};
+
+document.getElementById('bonds-tbody')?.addEventListener('click', handleTableClick);
+document.getElementById('stocks-tbody')?.addEventListener('click', handleTableClick);
+
+document.getElementById('btn-save-qty')?.addEventListener('click', async () => {
+    const id = parseInt((document.getElementById('edit-qty-id') as HTMLInputElement).value);
+    const newQty = parseFloat((document.getElementById('edit-qty-val') as HTMLInputElement).value);
+    if (!isNaN(newQty)) {
+        await (window as any).api.updateAssetQuantity(id, newQty);
+        modalEditQty?.classList.add('hidden');
+        loadAssetsData();
+    }
+});
+
+function renderTreemaps(bonds: any[], stocks: any[]) {
+    if (bondsTreemapChart) bondsTreemapChart.destroy();
+    if (stocksTreemapChart) stocksTreemapChart.destroy();
+
+    const canvasB = document.getElementById('bondsTreemap') as HTMLCanvasElement;
+    const canvasS = document.getElementById('stocksTreemap') as HTMLCanvasElement;
+    
+    const ctxB = canvasB ? canvasB.getContext('2d') : null;
+    const ctxS = canvasS ? canvasS.getContext('2d') : null;
+
+    const colorGenBonds = (ctx: any) => {
+        if (!ctx.raw || !ctx.raw._data) return '#333';
+        const item = Array.isArray(ctx.raw._data) ? ctx.raw._data[0] : ctx.raw._data;
+        if (!item || !item.type) return '#333';
+        return item.type.includes('skarbowe') ? '#1976D2' : '#388E3C';
+    };
+
+    const colorGenStocks = () => '#FF9800';
+
+    const safeBonds = bonds.length > 0 ? bonds : [{ name: 'Brak obligacji', value: 0.0001, type: '' }];
+    const safeStocks = stocks.length > 0 ? stocks : [{ name: 'Brak akcji', value: 0.0001, type: '' }];
+
+    const labelFormatter = (ctx: any) => {
+        if (ctx.type !== 'data' || !ctx.raw) return;
+        return [ctx.raw.g, Number(ctx.raw.v).toFixed(2) + ' zł'];
+    };
+
+    const tooltipOptions = {
+        enabled: true,
+        callbacks: {
+            label: (context: any) => ` Wartość: ${Number(context.raw.v).toFixed(2)} zł`
+        }
+    };
+
+    if (ctxB) {
+        bondsTreemapChart = new (window as any).Chart(ctxB, {
+            type: 'treemap',
+            data: {
+                datasets: [{
+                    tree: safeBonds,
+                    key: 'value',
+                    groups: ['name'],
+                    backgroundColor: colorGenBonds,
+                    borderWidth: 1,
+                    borderColor: '#1e1e1e',
+                    labels: { display: true, formatter: labelFormatter, color: 'white', font: { size: 14 } }
+                }]
+            },
+            options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tooltipOptions } }
+        });
+    }
+
+    if (ctxS) {
+        stocksTreemapChart = new (window as any).Chart(ctxS, {
+            type: 'treemap',
+            data: {
+                datasets: [{
+                    tree: safeStocks,
+                    key: 'value',
+                    groups: ['name'],
+                    backgroundColor: colorGenStocks,
+                    borderWidth: 1,
+                    borderColor: '#1e1e1e',
+                    labels: { display: true, formatter: labelFormatter, color: 'white', font: { size: 14 } }
+                }]
+            },
+            options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: tooltipOptions } }
+        });
+    }
+}
+
+// --- 8. OBSŁUGA DZIENNIKA ZAGRAŃ ---
+const modalJournal = document.getElementById('modal-journal') as HTMLDivElement;
+
+const quotes = [
+    { text: "„Gdybyś przez całe życie kupował spółki o wysokiej jakości tylko wtedy, gdy osiągają 200-tygodniową średnią kroczącą, pobiłbyś S&P 500 z ogromną nawiązką. Problem polega na tym, że niewielu ludzi ma w sobie tyle dyscypliny”", author: "Charlie Munger" },
+    { text: "„Ktoś siedzi dziś w cieniu, ponieważ ktoś inny posadził drzewo dawno temu.”", author: "Warren Buffet" },
+    { text: "„Rynek akcji to narzędzie do przenoszenia pieniędzy od aktywnych do cierpliwych.”", author: "Warren Buffet" },
+    { text: "„Giełda jest pełna ludzi, którzy znają cenę wszystkiego, ale nie znają wartości niczego.”", author: "Warren Buffet" },
+    { text: "„Gdyby historia była wszystkim, co liczy się w inwestowaniu, najbogatszymi ludźmi byliby bibliotekarze.”", author: "Warren Buffet" },
+    { text: "„Zdecydowanie lepiej jest kupić wspaniałą firmę za przyzwoitą cenę, niż przyzwoitą firmę za wspaniałą cenę.”", author: "Warren Buffet" },
+    { text: "„Kupuj tylko akcje takich firm, których posiadanie sprawiłoby ci przyjemność, gdyby giełda została zamknięta na 10 lat.”", author: "Warren Buffet" },
+    { text: "„Cena jest tym, co płacisz. Wartość jest tym, co otrzymujesz.”", author: "Warren Buffet" },
+    { text: "„Nigdy nie inwestuj w biznes, którego nie rozumiesz.”", author: "Warren Buffet" },
+    { text: "„Zbudowanie reputacji zajmuje 20 lat, a jej zniszczenie pięć minut. Jeśli o tym pomyślisz, zaczniesz działać inaczej.”", author: "Warren Buffet" },
+    { text: "„Jeśli masz tylko młotek, każdy problem wygląda jak gwóźdź.”", author: "Charlie Munger" },
+    { text: "„Tęsknota za szybkim wzbogaceniem się jest bardzo niebezpieczna.”", author: "Charlie Munger" },
+    { text: "„Znam ludzi, którzy mają wysokie IQ, ale brakuje im cierpliwości. Są rozszarpywani na strzępy przez rynek.”", author: "Charlie Munger" },
+    { text: "„Przez całe moje życie nie spotkałem ani jednego mądrego człowieka, który nie czytałby bez przerwy – ani jednego. Będziesz zaskoczony, jak dużo czyta Warren i jak dużo czytam ja.”", author: "Charlie Munger" },
+    { text: "„Nigdy nie handluj z kimś, komu nie możesz zaufać. Żadna umowa nie chroni przed złym człowiekiem.”", author: "Charlie Munger" },
+    { text: "„Żyj w ramach swoich dochodów i oszczędzaj, aby inwestować. Rób to, co musisz zrobić. Ucz się każdego dnia.”", author: "Charlie Munger" },
+    { text: "„Inwestor nie ma racji dlatego, że inni się z nim zgadzają lub nie. Ma rację dlatego, że jego fakty i analizy są rzetelne.”", author: "Benjamin Graham" },
+    { text: "„Największym wrogiem inwestora – a nawet jego najgorszym koszmarem – jest prawdopodobnie on sam.”", author: "Benjamin Graham" },
+    { text: "„Operacja inwestycyjna to taka, która po dokładnej analizie obiecuje bezpieczeństwo kapitału i satysfakcjonujący zwrot. Operacje niespełniające tych wymogów są spekulacją.”", author: "Benjamin Graham" },
+    { text: "„Sekret zdrowego inwestowania można streścić w dwóch słowach: Margines Bezpieczeństwa.”", author: "Benjamin Graham" },
+    { text: "„Za każdą akcją stoi firma. Dowiedz się, czym się zajmuje.”", author: "Peter Lynch" },
+    { text: "„Jeśli nie potrafisz wyjaśnić 10-latkowi w dwie minuty lub szybciej, dlaczego posiadasz dane akcje, nie powinieneś ich mieć.”", author: "Peter Lynch" },
+    { text: "„Więcej pieniędzy stracili inwestorzy próbujący przewidzieć korekty lub przed nimi uciekać, niż wyniosły straty w czasie samych korekt.”", author: "Peter Lynch" },
+    { text: "„Spadki na giełdzie są tak powszechne jak zamiecie śnieżne w Minnesocie w zimie. Jeśli jesteś przygotowany, nie mogą cię skrzywdzić.”", author: "Peter Lynch" },
+    { text: "„Kluczem do zarabiania pieniędzy na akcjach jest niedawanie się wystraszyć.”", author: "Peter Lynch" },
+    { text: "„Trend jest twoim przyjacielem, dopóki się nie odwróci…”", author: "John Murphy" },
+    { text: "„Rynek dyskontuje wszystko.”", author: "John Murphy" },
+    { text: "„Historia się powtarza.”", author: "John Murphy" },
+    { text: "„Nigdy nie łap spadającego noża.”", author: "John Murphy" },
+    { text: "„Kupuj, gdy na ulicach leje się krew, nawet jeśli ta krew jest twoja.”", author: "Nathan Mayer Rothschild" },
+    { text: "„Czas maksymalnego pesymizmu jest najlepszym momentem na kupno, a czas maksymalnego optymizmu – najlepszym momentem na sprzedaż.”", author: "Sir John Templeton" }
+];
+
+function setRandomQuote() {
+    const quoteEl = document.getElementById('journal-quote');
+    if (quoteEl) {
+        const randomIndex = Math.floor(Math.random() * quotes.length);
+        const quote = quotes[randomIndex];
+        quoteEl.innerHTML = `${quote.text} <br><span style="font-size: 13px; font-weight: bold; color: var(--accent); opacity: 0.8;">~ ${quote.author}</span>`;
+    }
+}
+
+
+document.getElementById('btn-new-journal')?.addEventListener('click', () => {
+    (document.getElementById('journal-id') as HTMLInputElement).value = '';
+    (document.getElementById('journal-existing-image') as HTMLInputElement).value = '';
+    (document.getElementById('journal-date') as HTMLInputElement).valueAsDate = new Date();
+    (document.getElementById('journal-buy-reason') as HTMLTextAreaElement).value = '';
+    (document.getElementById('journal-improvement') as HTMLTextAreaElement).value = '';
+    (document.getElementById('journal-profit') as HTMLInputElement).value = '';
+    (document.getElementById('journal-image') as HTMLInputElement).value = '';
+    modalJournal?.classList.remove('hidden');
+});
+
+document.getElementById('btn-cancel-journal')?.addEventListener('click', () => modalJournal?.classList.add('hidden'));
+
+const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+    });
+};
+
+document.getElementById('btn-save-journal')?.addEventListener('click', async () => {
+    const fileInput = document.getElementById('journal-image') as HTMLInputElement;
+    let base64Image = (document.getElementById('journal-existing-image') as HTMLInputElement).value;
+
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        base64Image = await fileToBase64(fileInput.files[0]);
+    }
+
+    const entry = {
+        date: (document.getElementById('journal-date') as HTMLInputElement).value,
+        buy_reason: (document.getElementById('journal-buy-reason') as HTMLTextAreaElement).value,
+        sell_reason: (document.getElementById('journal-sell-reason') as HTMLSelectElement).value,
+        closed_on_plan: (document.getElementById('journal-closed-plan') as HTMLSelectElement).value,
+        followed_strategy: (document.getElementById('journal-strategy') as HTMLSelectElement).value,
+        improvement: (document.getElementById('journal-improvement') as HTMLTextAreaElement).value,
+        profit_percent: parseFloat((document.getElementById('journal-profit') as HTMLInputElement).value) || 0,
+        rating: parseInt((document.getElementById('journal-rating') as HTMLSelectElement).value),
+        image_data: base64Image
+    };
+
+    const idStr = (document.getElementById('journal-id') as HTMLInputElement).value;
+
+    if (idStr) {
+        await (window as any).api.updateJournalEntry(parseInt(idStr), entry);
+    } else {
+        await (window as any).api.addJournalEntry(entry);
+    }
+
+    modalJournal?.classList.add('hidden');
+    loadJournalData();
+});
+
+async function loadJournalData() {
+    const container = document.getElementById('journal-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    currentJournalEntries = await (window as any).api.getJournalEntries();
+
+    currentJournalEntries.forEach((entry: any) => {
+        const profitColor = entry.profit_percent >= 0 ? '#4CAF50' : '#F44336';
+
+        let imgHTML = '';
+        if (entry.image_data) {
+            imgHTML = `<img src="${entry.image_data}" class="journal-img" title="Kliknij by powiększyć">`;
+        }
+
+        container.innerHTML += `
+            <div class="journal-card">
+                <h3>
+                    <span>${entry.date}</span>
+                    <span style="color: ${profitColor}; font-weight: bold;">${entry.profit_percent}%</span>
+                </h3>
+                <div class="journal-details">
+                    <p><strong>Ocena:</strong> ${entry.rating}/5</p>
+                    <p><strong>Wyjście:</strong> ${entry.sell_reason} | Zgodnie z planem: ${entry.closed_on_plan}</p>
+                    <p><strong>Zgodnie ze strategią:</strong> ${entry.followed_strategy}</p>
+                    <p style="margin-top: 10px;"><strong>Dlaczego kupiłem:</strong><br>${entry.buy_reason}</p>
+                    <p><strong>Co poprawić:</strong><br>${entry.improvement}</p>
+                </div>
+                ${imgHTML}
+                <div style="margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px;">
+                    <button class="btn btn-edit-journal" data-id="${entry.id}" style="padding: 5px 10px; font-size: 11px; background-color: var(--accent);">Edytuj</button>
+                    <button class="btn btn-delete-journal" data-id="${entry.id}" style="padding: 5px 10px; font-size: 11px; background-color: #F44336;">Usuń</button>
+                </div>
+            </div>
+        `;
+    });
+        
+    setRandomQuote();
+}
+
+document.getElementById('journal-container')?.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement;
+    const deleteBtn = target.closest('.btn-delete-journal');
+    const editBtn = target.closest('.btn-edit-journal');
+    const imgEl = target.closest('.journal-img');
+
+    if (deleteBtn) {
+        const id = parseInt(deleteBtn.getAttribute('data-id')!);
+        if (confirm("Usunąć ten wpis z dziennika?")) {
+            await (window as any).api.deleteJournalEntry(id);
+            loadJournalData();
+        }
+    } 
+    else if (editBtn) {
+        const id = parseInt(editBtn.getAttribute('data-id')!);
+        const entry = currentJournalEntries.find(x => x.id === id);
+        if (entry) {
+            (document.getElementById('journal-id') as HTMLInputElement).value = entry.id.toString();
+            (document.getElementById('journal-existing-image') as HTMLInputElement).value = entry.image_data || '';
+            (document.getElementById('journal-date') as HTMLInputElement).value = entry.date;
+            (document.getElementById('journal-buy-reason') as HTMLTextAreaElement).value = entry.buy_reason;
+            (document.getElementById('journal-sell-reason') as HTMLSelectElement).value = entry.sell_reason;
+            (document.getElementById('journal-closed-plan') as HTMLSelectElement).value = entry.closed_on_plan;
+            (document.getElementById('journal-strategy') as HTMLSelectElement).value = entry.followed_strategy;
+            (document.getElementById('journal-improvement') as HTMLTextAreaElement).value = entry.improvement;
+            (document.getElementById('journal-profit') as HTMLInputElement).value = entry.profit_percent.toString();
+            (document.getElementById('journal-rating') as HTMLSelectElement).value = entry.rating.toString();
+            (document.getElementById('journal-image') as HTMLInputElement).value = ''; 
+
+            modalJournal?.classList.remove('hidden');
+        }
+    } 
+    else if (imgEl) {
+        const src = imgEl.getAttribute('src');
+        if (src) {
+            const previewModal = document.getElementById('modal-image-preview');
+            const previewImg = document.getElementById('preview-img') as HTMLImageElement;
+            if(previewImg) previewImg.src = src;
+            previewModal?.classList.remove('hidden');
+        }
+    }
+});
+
+const closePreview = () => document.getElementById('modal-image-preview')?.classList.add('hidden');
+document.getElementById('btn-close-preview')?.addEventListener('click', closePreview);
+document.getElementById('modal-image-preview')?.addEventListener('click', (e) => {
+    if (e.target === document.getElementById('modal-image-preview')) closePreview();
+});
+
+// ==========================================
+// --- 9. OBSŁUGA WATCHLISTY I FUNDAMENTÓW ---
+// ==========================================
+
+const modalTicker = document.getElementById('modal-ticker') as HTMLDivElement;
+const modalValuation = document.getElementById('modal-valuation') as HTMLDivElement;
+
+document.getElementById('btn-new-ticker')?.addEventListener('click', () => {
+    (document.getElementById('ticker-input') as HTMLInputElement).value = '';
+    modalTicker?.classList.remove('hidden');
+});
+document.getElementById('btn-cancel-ticker')?.addEventListener('click', () => modalTicker?.classList.add('hidden'));
+document.getElementById('btn-close-valuation')?.addEventListener('click', () => modalValuation?.classList.add('hidden'));
+
+document.getElementById('btn-save-ticker')?.addEventListener('click', async () => {
+    const tickerInput = document.getElementById('ticker-input') as HTMLInputElement;
+    if(!tickerInput) return;
+    const ticker = tickerInput.value.trim().toUpperCase();
+    if (ticker) {
+        await (window as any).api.addWatchlistTicker(ticker);
+        modalTicker?.classList.add('hidden');
+        (window as any).loadWatchlistData();
+    }
+});
+
+document.getElementById('tv-import-file')?.addEventListener('change', async (e) => {
+    const target = e.target as HTMLInputElement;
+    if (!target.files || target.files.length === 0) return;
+    
+    const file = target.files[0];
+    const text = await file.text();
+    const lines = text.split('\n');
+
+    for (let line of lines) {
+        line = line.trim();
+        if (line && !line.includes(',') && !line.includes('\\') && !line.includes('}')) { 
+            let ticker = line.includes(':') ? line.split(':')[1] : line;
+            ticker = ticker.trim().toUpperCase();
+            
+            if (ticker && ticker.length > 0 && ticker.length < 15) {
+                await (window as any).api.addWatchlistTicker(ticker);
+            }
+        }
+    }
+    
+    target.value = ''; 
+    (window as any).loadWatchlistData();
+});
+
+(window as any).loadWatchlistData = async function loadWatchlistData() {
+    const tbody = document.getElementById('watchlist-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="6" style="text-align:center;">
+                Ładowanie danych...
+            </td>
+        </tr>
+    `;
+
+    // 1. Pobieranie danych portfela (Sprawdzamy co aktualnie POSIADAMY)
+    const assets = await (window as any).api.getAssets();
+    const ownedTickers = new Set(
+        assets
+            .filter((a: any) => a.type === 'Akcje')
+            .map((a: any) => a.name.trim().toUpperCase())
+    );
+
+    // 2. Pobieranie bazy obserwowanej Watchlisty
+    let watchlist = await (window as any).api.getWatchlist();
+    if (!watchlist) watchlist = [];
+    
+    const watchlistTickers = new Set(watchlist.map((w: any) => w.ticker));
+
+    // 3. Automatyczna synchronizacja
+    // Jeśli mamy coś w portfelu, czego nie ma jeszcze w bazie watchlisty - dodajemy cichaczem
+    const missingTickers = [...ownedTickers].filter(t => !watchlistTickers.has(t));
+    if (missingTickers.length > 0) {
+        for (const t of missingTickers) {
+            await (window as any).api.addWatchlistTicker(t);
+        }
+        // Pobieramy bazę ponownie po zaktualizowaniu
+        watchlist = await (window as any).api.getWatchlist();
+    }
+
+    // 4. Usuwanie potencjalnych duplikatów
+    const uniqueWatchlist: any[] = [];
+    const seen = new Set();
+    for (const w of watchlist) {
+        if (!seen.has(w.ticker)) {
+            seen.add(w.ticker);
+            uniqueWatchlist.push(w);
+        }
+    }
+
+    if (uniqueWatchlist.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align:center;">
+                    Brak spółek. Kup akcje, zaimportuj listę lub dodaj ręcznie.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    // 5. Równoległe pobieranie kursów z Yahoo
+    const promises = uniqueWatchlist.map(async (item: any) => {
+        const quote = await (window as any).api
+            .getYahooQuote(item.ticker)
+            .catch(() => null);
+
+        return { 
+            item, 
+            quote, 
+            isOwned: ownedTickers.has(item.ticker) // Znacznik dla sortowania
+        };
+    });
+
+    const quotes = await Promise.all(promises);
+
+    // 6. Podział na Posiadane i Obserwowane
+    const ownedQuotes = quotes.filter(q => q.isOwned);
+    const watchedQuotes = quotes.filter(q => !q.isOwned);
+
+    // 7. Generyczna funkcja do renderowania jednego wiersza
+
+    // 7. Generyczna funkcja do renderowania jednego wiersza
+
+    // 7. Generyczna funkcja do renderowania jednego wiersza
+    const renderRow = ({ item, quote, isOwned }: any) => {
+        const price = quote?.price != null ? quote.price.toFixed(2) : '-';
+        const change = quote?.changePercent != null ? quote.changePercent.toFixed(2) : '-';
+        const changeColor = quote?.changePercent > 0 ? '#4CAF50' : quote?.changePercent < 0 ? '#F44336' : '#fff';
+        const changeSign = quote?.changePercent > 0 ? '+' : '';
+        const pe = quote?.pe != null ? quote.pe.toFixed(2) : '-';
+        const peg = quote?.peg != null ? quote.peg.toFixed(2) : '-';
+        const name = quote?.name || item.ticker;
+        
+        // Inicjały awaryjne (np. DNP.WA -> DN)
+        const shortLogo = item.ticker.substring(0, 2).toUpperCase();
+        // Sprawdzamy czy to spółka z USA (brak kropki w tickerze)
+        const isUS = !item.ticker.includes('.');
+
+        let pegColor = 'var(--text-color)';
+        if (peg !== '-') {
+            const pegVal = parseFloat(peg);
+            if (pegVal < 1) pegColor = '#4CAF50';
+            else if (pegVal > 2) pegColor = '#F44336';
+        }
+
+        const actionHTML = isOwned 
+            ? `<span style="font-size: 11px; color: #aaa; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border);">W portfelu</span>`
+            : `<button class="btn btn-delete-wl" data-id="${item.id}" style="padding: 5px 10px; font-size: 11px; background-color: #F44336; color: white;">Usuń</button>`;
+
+        // Struktura awatara (Warstwa tekstu pod spodem, warstwa obrazka na wierzchu)
+        let logoHTML = `
+            <div style="position: relative; width: 32px; height: 32px; border-radius: 50%; background-color: #333; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                <span style="font-weight: bold; font-size: 11px; color: var(--accent); position: absolute; z-index: 1;">
+                    ${shortLogo}
+                </span>
+        `;
+
+        if (isUS) {
+            // Dodajemy tło off-white (#f8f9fa) i "drop-shadow", żeby uwidocznić białe logotypy!
+            // Jeśli obrazek nie zostanie znaleziony, element 'onerror' schowa go, a spod spodu wyskoczą inicjały.
+            logoHTML += `
+                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #f8f9fa; z-index: 2; display: flex; align-items: center; justify-content: center;">
+                    <img 
+                        src="https://financialmodelingprep.com/image-stock/${item.ticker}.png" 
+                        style="width: 100%; height: 100%; object-fit: contain; padding: 4px; box-sizing: border-box; filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.5));"
+                        onerror="this.parentElement.style.display='none';"
+                    />
+                </div>
+            `;
+        }
+
+        logoHTML += `</div>`;
+
+        return `
+            <tr class="watchlist-row" style="cursor: pointer; transition: 0.2s;" data-ticker="${item.ticker}">
+                <td style="display: flex; align-items: center; gap: 12px; padding: 12px;">
+                    ${logoHTML}
+                    <div>
+                        <div style="font-weight: bold; font-size: 14px;">${name}</div>
+                        <div style="font-size: 11px; color: #888;">${item.ticker}</div>
+                    </div>
+                </td>
+                <td>${price}</td>
+                <td style="color: ${changeColor}">${changeSign}${change}%</td>
+                <td>${pe}</td>
+                <td style="color: ${pegColor}">${peg}</td>
+                <td>${actionHTML}</td>
+            </tr>
+        `;
+    };
+
+    // 8. Składanie finalnej tabeli z nagłówkami grupującymi
+    let finalHTML = '';
+
+    if (ownedQuotes.length > 0) {
+        finalHTML += `
+            <tr style="background-color: rgba(255,255,255,0.05);">
+                <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: var(--accent); letter-spacing: 1px; text-transform: uppercase;">
+                    <i class="fa-solid fa-briefcase" style="margin-right: 8px;"></i> Posiadane aktywa
+                </td>
+            </tr>
+        `;
+        finalHTML += ownedQuotes.map(renderRow).join('');
+    }
+
+    if (watchedQuotes.length > 0) {
+        finalHTML += `
+            <tr style="background-color: rgba(255,255,255,0.02);">
+                <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px; text-transform: uppercase;">
+                    <i class="fa-solid fa-eye" style="margin-right: 8px;"></i> Pozostałe obserwowane
+                </td>
+            </tr>
+        `;
+        finalHTML += watchedQuotes.map(renderRow).join('');
+    }
+
+    tbody.innerHTML = finalHTML;
+}
+
+document.getElementById('watchlist-tbody')?.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement;
+    const deleteBtn = target.closest('.btn-delete-wl');
+    const row = target.closest('.watchlist-row');
+
+    if (deleteBtn) {
+        e.stopPropagation(); 
+        const id = parseInt(deleteBtn.getAttribute('data-id')!);
+        await (window as any).api.deleteWatchlistTicker(id);
+        (window as any).loadWatchlistData();
+    } 
+    else if (row) {
+        const ticker = row.getAttribute('data-ticker');
+        if (!ticker) return;
+
+        const valTbody = document.getElementById('val-tbody');
+        const valTitle = document.getElementById('val-title');
+        if(!valTbody || !valTitle) return;
+
+        valTitle.innerText = `Ładowanie wyceny ${ticker}...`;
+
+        const btnOpenYahoo = document.getElementById('btn-open-yahoo');
+        if (btnOpenYahoo) {
+            btnOpenYahoo.onclick = () => {
+                const url = `https://finance.yahoo.com/quote/${ticker}/key-statistics/`;
+                (window as any).api.openExternal(url);
+            };
+        }
+
+        valTbody.innerHTML = '';
+        modalValuation?.classList.remove('hidden');
+
+        const data = await (window as any).api.getYahooFundamentals(ticker);
+        
+        valTitle.innerText = `Valuation Measures: ${ticker}`;
+        
+        if (!data) {
+            valTbody.innerHTML = `<tr><td colspan="2" style="text-align:center;">Brak danych wyceny dla tej spółki.</td></tr>`;
+            return;
+        }
+
+        const formatLarge = (num: number) => {
+            if (!num) return '-';
+            if (num >= 1e12) return (num / 1e12).toFixed(2) + 'T';
+            if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+            return num.toString();
+        };
+
+        const sd = data.summaryDetail || {};
+        const ks = data.defaultKeyStatistics || {};
+        const p = data.price || {};
+
+        const metrics = [
+            { name: "Market Cap", val: formatLarge(p.marketCap) },
+            { name: "Enterprise Value", val: formatLarge(ks.enterpriseValue) },
+            { name: "Trailing P/E", val: sd.trailingPE?.toFixed(2) || '-' },
+            { name: "Forward P/E", val: sd.forwardPE?.toFixed(2) || '-' },
+            { name: "PEG Ratio (5yr expected)", val: ks.pegRatio?.toFixed(2) || '-' },
+            { name: "Price/Sales", val: sd.priceToSalesTrailing12Months?.toFixed(2) || '-' },
+            { name: "Price/Book", val: ks.priceToBook?.toFixed(2) || '-' }
+        ];
+
+        metrics.forEach(m => {
+            valTbody.innerHTML += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="text-align: left; padding: 10px; color: #aaa;">${m.name}</td>
+                    <td style="padding: 10px; font-weight: bold;">${m.val}</td>
+                </tr>
+            `;
+        });
+    }
+});
+
+document.querySelector('[data-target="watchlist"]')?.addEventListener('click', () => {
+    if(typeof (window as any).loadWatchlistData === 'function') {
+        (window as any).loadWatchlistData();
+    }
+    document.querySelector('[data-target="portfolio-stocks"]')?.classList.add('active');
+});
+
+// START
+loadData();

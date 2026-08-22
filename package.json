@@ -1,0 +1,25 @@
+{
+  "name": "portfolio-tracker",
+  "version": "1.0.0",
+  "description": "Portfolio Tracker",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsc && electron .",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.7",
+    "yahoo-finance2": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/sqlite3": "^3.1.8",
+    "electron": "latest",
+    "typescript": "^5.0.0"
+  },
+  "allowScripts": {
+    "electron": true,
+    "sqlite3": true
+  }
+}
