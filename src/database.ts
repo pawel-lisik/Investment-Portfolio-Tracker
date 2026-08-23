@@ -190,3 +190,27 @@ export const deleteWatchlistTicker = (id: number): Promise<void> => {
         });
     });
 }
+
+export const deleteDeposit = (id: number) => {
+    return new Promise((resolve, reject) => {
+        db.run('DELETE FROM deposits WHERE id = ?', [id], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+        });
+    });
+};
+
+export const updateDeposit = (id: number, deposit: any) => {
+    return new Promise((resolve, reject) => {
+        db.run(
+            `UPDATE deposits 
+             SET date = ?, amount = ?, currency = ?, exchange_rate = ?, amount_pln = ?, destination = ? 
+             WHERE id = ?`,
+            [deposit.date, deposit.amount, deposit.currency, deposit.exchange_rate, deposit.amount_pln, deposit.destination, id],
+            function(err) {
+                if (err) reject(err);
+                else resolve(this.changes);
+            }
+        );
+    });
+};

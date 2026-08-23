@@ -19,5 +19,7 @@ contextBridge.exposeInMainWorld('api', {
     deleteWatchlistTicker: (id: number) => ipcRenderer.invoke('delete-watchlist-ticker', id),
     getYahooQuote: (ticker: string) => ipcRenderer.invoke('get-yahoo-quote', ticker),
     getYahooFundamentals: (ticker: string) => ipcRenderer.invoke('get-yahoo-fundamentals', ticker),
-    openExternal: (url: string) => ipcRenderer.send('open-external', url)
+    openExternal: (url: string) => ipcRenderer.send('open-external', url),
+    updateDeposit: (id: number, deposit: any) => ipcRenderer.invoke('update-deposit', id, deposit),
+    deleteDeposit: (id: number) => ipcRenderer.invoke('delete-deposit', id),
 });

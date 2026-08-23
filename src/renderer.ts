@@ -10,6 +10,7 @@ let currentStatView = 0; // 0: Depozyty, 1: Zysk Netto, 2: ROI
 let cachedTotalDeposits = 0;
 let cachedTotalNetProfit = 0;
 let currentJournalEntries: any[] = [];
+let currentDeposits: any[] = [];
 
 // --- USTAWIENIA (LocalStorage) ---
 let userBrokers = JSON.parse(localStorage.getItem('userBrokers') || '[]');
@@ -264,11 +265,18 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // --- 3. OBSŁUGA MODALI WPŁAT I ZYSKÓW ---
+// --- 3. OBSŁUGA MODALI WPŁAT I ZYSKÓW ---
 const modalDeposit = document.getElementById('modal-deposit') as HTMLDivElement;
 const modalProfit = document.getElementById('modal-profit') as HTMLDivElement;
 
 document.getElementById('btn-new-deposit')?.addEventListener('click', () => {
+    const title = document.getElementById('modal-dep-title');
+    if (title) title.innerText = 'Nowa Wpłata';
+    
+    (document.getElementById('dep-id') as HTMLInputElement).value = '';
     (document.getElementById('dep-date') as HTMLInputElement).valueAsDate = new Date();
+    (document.getElementById('dep-amount') as HTMLInputElement).value = '';
+    
     modalDeposit?.classList.remove('hidden');
 });
 document.getElementById('btn-cancel-deposit')?.addEventListener('click', () => modalDeposit?.classList.add('hidden'));
@@ -280,7 +288,6 @@ document.getElementById('btn-new-profit')?.addEventListener('click', () => {
 document.getElementById('btn-cancel-profit')?.addEventListener('click', () => modalProfit?.classList.add('hidden'));
 
 
-// --- 4. OBSŁUGA WALUT I NBP ---
 // --- 4. OBSŁUGA WALUT I NBP ---
 const depCurrency = document.getElementById('dep-currency') as HTMLSelectElement;
 const depAmount = document.getElementById('dep-amount') as HTMLInputElement;
@@ -308,13 +315,11 @@ async function updateRate() {
 
     depRateInfo.innerText = 'Pobieranie kursu NBP...';
 
-    // Inteligentne szukanie kursu (jeśli weekend, cofa się max o 5 dni do ostatniego roboczego)
     let dateObj = new Date(selectedDate);
     let foundRate = null;
     let rateDate = '';
 
     for (let i = 0; i < 5; i++) {
-        // Formatowanie daty do YYYY-MM-DD
         const dStr = dateObj.toISOString().split('T')[0];
         try {
             const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${currency}/${dStr}?format=json`);
@@ -322,12 +327,9 @@ async function updateRate() {
                 const data = await res.json();
                 foundRate = data.rates[0].mid;
                 rateDate = dStr;
-                break; // Znaleziono kurs, przerywamy pętlę!
+                break; 
             }
-        } catch (e) {
-            // Ignorujemy błędy sieciowe, pętla pójdzie dalej
-        }
-        // Cofnij o jeden dzień
+        } catch (e) {}
         dateObj.setDate(dateObj.getDate() - 1);
     }
 
@@ -340,12 +342,11 @@ async function updateRate() {
     }
 }
 
-// Nasłuchujemy zmian na walucie, kwocie ORAZ dacie
 depCurrency?.addEventListener('change', updateRate);
 depAmount?.addEventListener('input', updateRate);
 depDate?.addEventListener('change', updateRate);
 
-// ZAPIS WPŁAT I ZYSKÓW
+// ZAPIS WPŁAT (I EDYCJA)
 document.getElementById('btn-save-deposit')?.addEventListener('click', async () => {
     const amount = parseFloat(depAmount?.value) || 0;
     const deposit = {
@@ -357,7 +358,14 @@ document.getElementById('btn-save-deposit')?.addEventListener('click', async () 
         destination: (document.getElementById('dep-dest') as HTMLSelectElement).value
     };
 
-    await (window as any).api.addDeposit(deposit);
+    const idStr = (document.getElementById('dep-id') as HTMLInputElement).value;
+
+    if (idStr) {
+        await (window as any).api.updateDeposit(parseInt(idStr), deposit);
+    } else {
+        await (window as any).api.addDeposit(deposit);
+    }
+
     modalDeposit?.classList.add('hidden');
     loadData();
 });
@@ -370,11 +378,60 @@ document.getElementById('btn-save-profit')?.addEventListener('click', async () =
         amount: parseFloat((document.getElementById('prof-amount') as HTMLInputElement).value) || 0,
         tax: parseFloat((document.getElementById('prof-tax') as HTMLInputElement).value) || 0
     };
-
     await (window as any).api.addProfit(profit);
     modalProfit?.classList.add('hidden');
     loadData();
 });
+
+// KLIKANIE EDYTUJ/USUŃ W TABELI WPŁAT
+// KLIKANIE EDYTUJ/USUŃ W TABELI WPŁAT
+document.getElementById('deposits-tbody')?.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement;
+    const deleteBtn = target.closest('.btn-delete-dep');
+    const editBtn = target.closest('.btn-edit-dep');
+    const moreBtn = target.closest('.btn-more-dep');
+    const closeBtn = target.closest('.btn-close-slider');
+
+    // Obsługa animacji przesunięcia w lewo
+    if (moreBtn) {
+        const id = moreBtn.getAttribute('data-id');
+        const slider = document.getElementById(`slider-dep-${id}`);
+        if (slider) slider.style.transform = 'translateX(-50%)'; // Przesuwa panel
+    }
+    // Obsługa animacji powrotu (krzyżyk)
+    else if (closeBtn) {
+        const id = closeBtn.getAttribute('data-id');
+        const slider = document.getElementById(`slider-dep-${id}`);
+        if (slider) slider.style.transform = 'translateX(0)'; // Wraca na miejsce
+    }
+    // Faktyczne usuwanie
+    else if (deleteBtn) {
+        const id = parseInt(deleteBtn.getAttribute('data-id')!);
+        if (confirm("Czy na pewno chcesz usunąć tę wpłatę z historii? (Zmieni to całkowite saldo!)")) {
+            await (window as any).api.deleteDeposit(id);
+            loadData();
+        }
+    } 
+    // Faktyczna edycja
+    else if (editBtn) {
+        const id = parseInt(editBtn.getAttribute('data-id')!);
+        const dep = currentDeposits.find(x => x.id === id);
+        if (dep) {
+            const title = document.getElementById('modal-dep-title');
+            if (title) title.innerText = 'Edytuj Wpłatę';
+
+            (document.getElementById('dep-id') as HTMLInputElement).value = dep.id.toString();
+            (document.getElementById('dep-date') as HTMLInputElement).value = dep.date;
+            (document.getElementById('dep-amount') as HTMLInputElement).value = dep.amount.toString();
+            (document.getElementById('dep-currency') as HTMLSelectElement).value = dep.currency;
+            (document.getElementById('dep-dest') as HTMLSelectElement).value = dep.destination;
+
+            updateRate();
+            modalDeposit?.classList.remove('hidden');
+        }
+    }
+});
+
 
 // --- 5. GŁÓWNA LOGIKA ŁADOWANIA DANYCH ---
 async function loadData() {
@@ -388,9 +445,22 @@ async function loadData() {
     let totalAssetsPLN = 0;
     const allocation: Record<string, number> = {};
 
-    deposits.forEach((d: any) => {
+    let totalUsdAmount = 0; let totalUsdPln = 0;
+    let totalEurAmount = 0; let totalEurPln = 0;
+
+    currentDeposits = deposits;
+
+deposits.forEach((d: any) => {
         totalAssetsPLN += d.amount_pln;
         allocation[d.destination] = (allocation[d.destination] || 0) + d.amount_pln;
+
+        if (d.currency === 'USD') {
+            totalUsdAmount += d.amount;
+            totalUsdPln += d.amount_pln;
+        } else if (d.currency === 'EUR') {
+            totalEurAmount += d.amount;
+            totalEurPln += d.amount_pln;
+        }
 
         if (tbodyDep) {
             tbodyDep.innerHTML += `
@@ -400,6 +470,38 @@ async function loadData() {
                     <td>${d.exchange_rate > 1 ? d.exchange_rate.toFixed(4) : '-'}</td>
                     <td>${d.amount_pln.toFixed(2)} zł</td>
                     <td>${d.destination}</td>
+                    
+                    <td style="padding: 5px; width: 1%; white-space: nowrap; text-align: right;">
+                        <!-- Maska wyrównana do prawej przez margin-left: auto -->
+                        <div style="width: 140px; overflow: hidden; border-radius: 4px; position: relative; margin-left: auto;">
+                            
+                            <!-- Panel startuje domyślnie z pozycji 0 (Widok 1 widać, Widok 2 jest ukryty z prawej) -->
+                            <div id="slider-dep-${d.id}" style="display: flex; width: 280px; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0); align-items: center;">  
+                                
+                                <!-- WIDOK 1: Domyślnie widoczny przycisk "Więcej" na start (Lewa strona slidera) -->
+                                <div style="width: 140px; display: flex; gap: 5px; justify-content: flex-end; align-items: center; height: 30px;">
+                                    <button class="btn btn-more-dep" data-id="${d.id}" style="font-size: 11px; background: none; border: 2px solid #ccc; border-radius: 50%; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;">
+                                        <i class="fa-solid fa-ellipsis"></i>
+                                    </button>
+                                </div>
+
+                                <!-- WIDOK 2: Przyciski akcji (Prawa strona slidera, wjeżdża z prawej po kliknięciu 'Więcej') -->
+                                <div style="width: 140px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; height: 30px;">
+                                
+                                    <button class="btn btn-edit-dep" data-id="${d.id}" style="font-size: 16px; background-color: var(--purple); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-pen"></i></button>
+                                    <button class="btn btn-delete-dep" data-id="${d.id}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
+
+
+                                    <!-- Krzyżyk "Anuluj" wyrównany do prawej -->
+                                    <button class="btn btn-close-slider" data-id="${d.id}" style="font-size: 20px; background: none; border: none; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;" title="Anuluj">
+                                        <i class="fa-regular fa-circle-xmark"></i>
+                                    </button>
+                                </div>
+
+                            </div>
+                        </div>
+                    </td>
+
                 </tr>
             `;
         }
@@ -407,7 +509,15 @@ async function loadData() {
 
     cachedTotalDeposits = totalAssetsPLN;
 
-    // TABELA ALOKACJI WIDOK ZAMIAST WYKRESU
+    const avgUsd = totalUsdAmount > 0 ? totalUsdPln / totalUsdAmount : 0;
+    const avgEur = totalEurAmount > 0 ? totalEurPln / totalEurAmount : 0;
+    
+    const usdEl = document.getElementById('avg-rate-usd');
+    const eurEl = document.getElementById('avg-rate-eur');
+    
+    if (usdEl) usdEl.innerText = avgUsd > 0 ? `${avgUsd.toFixed(4)} PLN` : '-';
+    if (eurEl) eurEl.innerText = avgEur > 0 ? `${avgEur.toFixed(4)} PLN` : '-';
+
     const allocMap = {
         akcje: (allocation['Akcje'] || 0) + (allocation['Akcje 2'] || 0),
         skarbowe: allocation['Obligacje skarbowe'] || 0,
@@ -443,7 +553,6 @@ async function loadData() {
         const allocTotalEl = document.getElementById('allocation-total');
         if (allocTotalEl) allocTotalEl.innerText = `${totalAssetsPLN.toFixed(2)} zł`;
 
-        // LOGIKA POWIADOMIENIA O PRZEKROCZENIU RYZYKA (PANCERNE CHOWANIE)
         const portfolioWarning = document.getElementById('portfolio-warning');
         const warningPercent = document.getElementById('warning-percent');
         
@@ -452,14 +561,11 @@ async function loadData() {
                 const stocksPercent = (allocMap.akcje / totalAssetsPLN) * 100;
                 if (stocksPercent > userPortfolioThreshold) {
                     warningPercent.innerText = `${stocksPercent.toFixed(1)}%`;
-                    portfolioWarning.classList.remove('hidden');
-                    portfolioWarning.style.display = 'block'; // Twarde wymuszenie
+                    portfolioWarning.style.display = 'block'; 
                 } else {
-                    portfolioWarning.classList.add('hidden');
-                    portfolioWarning.style.display = 'none'; // Twarde wymuszenie
+                    portfolioWarning.style.display = 'none'; 
                 }
             } else {
-                portfolioWarning.classList.add('hidden');
                 portfolioWarning.style.display = 'none';
             }
         }
@@ -472,7 +578,6 @@ async function loadData() {
 
     const groupedByYear: Record<string, Record<string, Record<string, {profit: number, tax: number}>>> = {};
 
-    // Dynamicznie grupujemy historię
     profits.forEach((p: any) => {
         const year = p.date.substring(0, 4); 
         if (!groupedByYear[year]) groupedByYear[year] = {};
@@ -547,6 +652,7 @@ async function loadData() {
     loadAssetsData();
     loadJournalData();
 }
+
 
 // --- 6. RYSOWANIE WYKRESÓW GŁÓWNYCH ---
 function renderCharts(allocation: Record<string, number>, deposits: any[], profits: any[]) {
@@ -1405,8 +1511,8 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
     if (ownedQuotes.length > 0) {
         finalHTML += `
             <tr style="background-color: rgba(255,255,255,0.05);">
-                <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: var(--accent); letter-spacing: 1px; text-transform: uppercase;">
-                    <i class="fa-solid fa-briefcase" style="margin-right: 8px;"></i> Posiadane aktywa
+                <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px; text-transform: uppercase;">
+                    <i class="fa-solid fa-table-cells" style="margin-right: 8px;"></i> Posiadane
                 </td>
             </tr>
         `;
@@ -1417,7 +1523,7 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         finalHTML += `
             <tr style="background-color: rgba(255,255,255,0.02);">
                 <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px; text-transform: uppercase;">
-                    <i class="fa-solid fa-eye" style="margin-right: 8px;"></i> Pozostałe obserwowane
+                    <i class="fa-solid fa-bookmark" style="margin-right: 8px;"></i> Pozostałe
                 </td>
             </tr>
         `;
