@@ -14,12 +14,14 @@
         <div id="dashboard" class="tab-content active">
             <div class="header">
                 <h1>Podsumowanie Aktywów</h1> 
-                <button id="btn-settings" class="btn primary" title="Konto"><i class="fa-solid fa-circle-user"></i></button>
+                <button id="btn-settings" class="btn primary" style="font-size: 30px" title="Konto"><i class="fa-solid fa-circle-user"></i></button>
             </div>
 
+            <div id="empty-label">
+                <p>Dodaj depozyty i zyski, aby zobaczyć podsumowanie aktywów.</p>
+            </div>
 
-
-            <div class="charts-container">
+            <div class="charts-container" id="all-charts">
 <!-- Lewy górny wykres (Z opcją przełączania na tabelę) -->
                 <div class="chart-box" style="height: 450px; position: relative; display: flex; flex-direction: column;">
                     
@@ -148,12 +150,10 @@
                 <div style="display: flex; gap: 10px;">
                     <!-- Niewidoczny input dla pliku TXT -->
                     <input type="file" id="tv-import-file" accept=".txt" style="display: none;">
-                    <button class="btn secondary" onclick="document.getElementById('tv-import-file').click()" title="Importuj z TradingView">
-                        <i class="fa-solid fa-file-import"></i> Importuj .txt
-                    </button>
-                    <button id="btn-new-ticker" class="btn primary" title="Dodaj Ticker">
-                        <i class="fa-solid fa-plus"></i> Dodaj ręcznie
-                    </button>
+                    <button class="btn primary" onclick="document.getElementById('tv-import-file').click()" title="Importuj watchlistę z TradingView (plik .txt)">
+                        <i class="fa-solid fa-file-import"></i></button>
+                    <button id="btn-new-ticker" class="btn primary" title="Dodaj spółkę do obserwowanych">
+                        <i class="fa-solid fa-plus"></i></button>
                 </div>
             </div>
 
@@ -186,25 +186,35 @@
             <div class="header">
                 <h1>Historia Wpłat</h1>
                 <div>
-                    <button id="btn-new-deposit" class="btn primary" title="Nowa wpłata"><i class="fa-solid fa-plus"></i></button>
+                    <button id="btn-csv" class="btn primary" title="Importuj / eksportuj historię"><i class="fa-solid fa-file-csv"></i></button>
+
+
+                    <button id="btn-transfer" class="btn primary" title="Transfer między kontami"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+                    <button id="btn-new-deposit" class="btn primary" title="Nowa wpłata / wypłata"><i class="fa-solid fa-plus"></i></button>
                 </div>
             </div>
 
 
             
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Kwota wpłaty</th>
-                        <th>Kurs NBP</th>
-                        <th>Wartość w PLN</th>
-                        <th>Konto</th>
-                        <th> </th>
-                    </tr>
-                </thead>
-                <tbody id="deposits-tbody"></tbody>
-            </table>
+
+            <!-- Dodany kontener wymuszający przewijanie samej tabeli, a nie całej strony -->
+            <div style="max-height: 70vh; overflow-y: auto; border-radius: 6px;">
+                <table class="data-table" style="margin: 0;">
+                    <!-- 'sticky' przykleja nagłówek do góry -->
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <!-- Dodane tło, aby tekst pod spodem nie prześwitywał podczas przewijania -->
+                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Data</th>
+                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kwota wpłaty</th>
+                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kurs NBP</th>
+                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Wartość w PLN</th>
+                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Konto</th>
+                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);"> </th>
+                        </tr>
+                    </thead>
+                    <tbody id="deposits-tbody"></tbody>
+                </table>
+            </div>
         </div>
 
         <div id="taxes" class="tab-content">
@@ -256,7 +266,7 @@
                 <h1>Portfel Akcji</h1>
                 <div style="display: flex; gap: 10px;">
                     <button class="nav-btn" title="Lista Obserwowanych" data-target="watchlist"> <i class="fas fa-list"></i></button>
-                    <button id="btn-new-stock" class="btn primary" title="Dodaj akcje"><i class="fa-solid fa-plus"></i></button>
+                    <button id="btn-new-stock" class="btn primary" title="Dodaj akcje do portfela"><i class="fa-solid fa-plus"></i></button>
                     
                 </div>
             </div>
@@ -314,12 +324,13 @@
 
     <div id="modal-deposit" class="modal hidden">
         <div class="modal-box">
-            <h2 id="modal-dep-title">Nowa Wpłata</h2>
+            <h2 id="modal-dep-title">Nowa Wpłata / Wypłata</h2>
             <input type="hidden" id="dep-id">
             <div class="form-group">
                 <label>Data</label>
                 <input type="date" id="dep-date">
             </div>
+            <p>Dla wypłat wpisz ujemną kwotę.</p>
             <div class="form-row">
                 <div class="form-group">
                     <label>Kwota</label>
@@ -335,20 +346,18 @@
                 </div>
             </div>
             <div class="rate-info" id="dep-rate-info"></div>
+
+
             <div class="form-group">
-                <label>Przeznaczenie</label>
+                <label>Konto</label>
                 <select id="dep-dest">
-                    <option value="Obligacje skarbowe">Obligacje skarbowe</option>
-                    <option value="Obligacje korporacyjne">Obligacje korporacyjne</option>
-                    <option value="Akcje">Akcje</option>
-                    <option value="Akcje 2">Akcje 2</option>
-                    <option value="Konto oszczędnościowe">Konto oszczędnościowe</option>
-                    <option value="Inne">Inne</option>
+                    <!-- Wygeneruje się dynamicznie z ustawień! -->
                 </select>
             </div>
+
             <div class="modal-actions">
-                <button id="btn-cancel-deposit" class="btn">Anuluj</button>
-                <button id="btn-save-deposit" class="btn primary">Zapisz wpłatę</button>
+                <button id="btn-cancel-deposit" class="btn secondary">Anuluj</button>
+                <button id="btn-save-deposit" class="btn accent">Zapisz wpłatę</button>
             </div>
         </div>
     </div>
@@ -388,8 +397,8 @@
                         </div>
                     </div>
                     <div class="modal-actions">
-                        <button id="btn-cancel-profit" class="btn">Anuluj</button>
-                        <button id="btn-save-profit" class="btn secondary">Zapisz Zysk</button>
+                        <button id="btn-cancel-profit" class="btn secondary">Anuluj</button>
+                        <button id="btn-save-profit" class="btn accent">Zapisz Zysk</button>
                     </div>
                 </div>
             </div>
@@ -448,8 +457,8 @@
             </div>
 
             <div class="modal-actions">
-                <button id="btn-cancel-asset" class="btn">Anuluj</button>
-                <button id="btn-save-asset" class="btn primary">Dodaj do portfela</button>
+                <button id="btn-cancel-asset" class="btn secondary">Anuluj</button>
+                <button id="btn-save-asset" class="btn accent">Dodaj do portfela</button>
             </div>
         </div>
     </div>
@@ -516,8 +525,8 @@
                 <input type="file" id="journal-image" accept="image/*">
             </div>
             <div class="modal-actions">
-                <button id="btn-cancel-journal" class="btn">Anuluj</button>
-                <button id="btn-save-journal" class="btn primary">Zapisz Wpis</button>
+                <button id="btn-cancel-journal" class="btn secondary">Anuluj</button>
+                <button id="btn-save-journal" class="btn accent">Zapisz Wpis</button>
             </div>
         </div>
     </div>
@@ -563,8 +572,8 @@
                 <input type="number" id="edit-qty-val" step="0.0001">
             </div>
             <div class="modal-actions">
-                <button id="btn-cancel-qty" class="btn">Anuluj</button>
-                <button id="btn-save-qty" class="btn primary">Zapisz</button>
+                <button id="btn-cancel-qty" class="btn secondary">Anuluj</button>
+                <button id="btn-save-qty" class="btn accent">Zapisz</button>
             </div>
         </div>
     </div>
@@ -587,8 +596,8 @@
                 <input type="text" id="ticker-input" style="text-transform: uppercase;">
             </div>
             <div class="modal-actions">
-                <button id="btn-cancel-ticker" class="btn">Anuluj</button>
-                <button id="btn-save-ticker" class="btn primary">Dodaj</button>
+                <button id="btn-cancel-ticker" class="btn secondary">Anuluj</button>
+                <button id="btn-save-ticker" class="btn accent">Dodaj</button>
             </div>
         </div>
     </div>
@@ -622,12 +631,12 @@
     <div id="modal-settings" class="modal hidden" style="z-index: 3000;">
         <div class="modal-box" style="width: 500px; position: relative;">
             <!-- Przycisk X do zamykania (Auto-Zapis) -->
-            <button id="btn-close-settings" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;">&times;</button>
+            <button id="btn-close-settings" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
             
-            <h2 style="margin-top: 0;">Ustawienia</h2>
+            <h2 style="margin-top: 0;">Profil</h2>
             
             <div class="form-group">
-                <label>Typ Portfolio (Próg ostrzegawczy akcji)</label>
+                <label style="margin-bottom: 15px">Styl inwestowania</label>
                 <!-- Wartości to procenty, co ułatwi obliczenia w JS -->
                 <select id="setting-portfolio-type">
                     <option value="20">Konserwatywny: 80/20 (max 20% akcji)</option>
@@ -638,24 +647,24 @@
                 </select>
             </div>
 
+
             <div class="form-group" style="margin-top: 25px;">
-                <label>Zarządzaj Biurami Maklerskimi (np. do zysków)</label>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <input type="text" id="setting-new-broker" placeholder="np. Akcje mBank, Revolut...">
-                    <button id="btn-add-broker" class="btn primary"><i class="fa-solid fa-plus"></i></button>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label>Konta w Biurach Maklerskich</label>
+                    <button id="btn-open-add-broker" class="btn primary"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <div id="setting-brokers-list" style="background: #1e1e1e; padding: 10px; border-radius: 6px; border: 1px solid var(--border); max-height: 150px; overflow-y: auto;">
                     <!-- JS wygeneruje tu dynamiczną listę -->
                 </div>
             </div>
-            <small style="color: #666;">Zapis następuje automatycznie. Kliknij krzyżyk, by zamknąć.</small>
         </div>
     </div>
 
 <!-- MODAL STRATEGII -->
     <div id="modal-strategy" class="modal hidden" style="z-index: 3000;">
         <div class="modal-box" style="width: 700px; height: 600px; position: relative;">
-            <button id="btn-close-strategy" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;">&times;</button>
+            <button id="btn-close-strategy" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
             <h2 style="margin-top: 0;">Strategia Inwestycyjna</h2>
 
             <!-- WIDOK ODCZYTU (Z zachowaniem formatowania) -->
@@ -667,14 +676,117 @@
             </div>
 
             <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end;">
-                <button id="btn-edit-strategy" class="btn secondary">Edytuj Strategię</button>
-                <button id="btn-cancel-strategy" class="btn hidden" style="background-color: #444;">Anuluj</button>
-                <button id="btn-save-strategy" class="btn primary hidden">Zapisz Zmiany</button>
+                <button id="btn-edit-strategy" class="btn secondary">Edytuj</button>
+                <button id="btn-cancel-strategy" class="btn secondary hidden">Anuluj</button>
+                <button id="btn-save-strategy" class="btn accent hidden">Zapisz Zmiany</button>
             </div>
         </div>
     </div>
 
 
+    <!-- NOWE OKIENKO DODAWANIA BROKERA/KONTA -->
+    <div id="modal-add-broker" class="modal hidden" style="z-index: 3500;">
+        <div class="modal-box" style="width: 400px;">
+            <h2>Dodaj Konto / Brokera</h2>
+            <div class="form-group">
+                <label>Nazwa (np. XTB, mBank, Portfel Krypto)</label>
+                <input type="text" id="setting-new-broker-name">
+            </div>
+            <div class="form-group">
+                <label>Główny typ aktywów</label>
+                <select id="setting-new-broker-type">
+                    <option value="Akcje">Akcje</option>
+                    <option value="Obligacje skarbowe krajowe">Obligacje skarbowe krajowe</option>
+                    <option value="Obligacje korporacyjne i zagraniczne">Obligacje korporacyjne i zagr.</option>
+                    <option value="Konta oszczędnościowe">Konta oszczędnościowe</option>
+                    <option value="Kryptowaluty">Kryptowaluty</option>
+                    <option value="Metale szlachetne">Metale szlachetne</option>
+                    <option value="Inne">Inne</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button id="btn-cancel-add-broker" class="btn secondary">Anuluj</button>
+                <button id="btn-confirm-add-broker" class="btn accent">Dodaj do listy</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL TRANSFERU MIĘDZY KONTAMI -->
+    <div id="modal-transfer" class="modal hidden" style="z-index: 3200;">
+        <div class="modal-box">
+            <h2>Transfer między kontami</h2>
+            <div class="form-group">
+                <label>Data</label>
+                <input type="date" id="transfer-date">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Z konta (Zabierz)</label>
+                    <select id="transfer-from"></select>
+                </div>
+                <div class="form-group">
+                    <label>Na konto (Dodaj)</label>
+                    <select id="transfer-to"></select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Kwota transferu</label>
+                    <input type="number" id="transfer-amount" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Waluta</label>
+                    <select id="transfer-currency">
+                        <option value="PLN">PLN</option>
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                    </select>
+                </div>
+            </div>
+            <div class="rate-info" id="transfer-rate-info" style="color: #aaa; font-size: 12px; margin-bottom: 15px;"></div>
+            <div class="modal-actions">
+                <button id="btn-cancel-transfer" class="btn secondary">Anuluj</button>
+                <button id="btn-save-transfer" class="btn accent">Wykonaj transfer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL IMPORT/EKSPORT CSV -->
+    <div id="modal-csv" class="modal hidden" style="z-index: 3400;">
+        <div class="modal-box" style="width: 550px; position: relative;">
+            <button id="btn-close-csv" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
+            <h2 style="margin-top: 0;">Importuj / eksportuj historię</h2>
+            
+            <div style="margin-bottom: 20px;">
+                <p style="font-size: 13px; color: #aaa; margin-bottom: 10px;">Obsługiwany format pliku to <strong>CSV (rozdzielany przecinkami)</strong>. Wymagane są dokładnie 4 kolumny w stałej kolejności (nagłówki są ignorowane):</p>
+                <ol style="font-size: 13px; color: #ddd; margin-bottom: 0; padding-left: 20px;">
+                    <li><strong>Data:</strong> format RRRR-MM-DD (np. 2024-05-12)</li>
+                    <li><strong>Kwota:</strong> sama wartość (np. 1500 lub 1500,50)</li>
+                    <li><strong>Waluta:</strong> PLN, USD lub EUR</li>
+                    <li><strong>Konto:</strong> dokładna nazwa (np. XTB, BM PKO)</li>
+                </ol>
+            </div>
+
+            <div style="display: flex; gap: 15px; justify-content: space-between;">
+                <!-- SEKCJA EKSPORTU -->
+                <div style="flex: 1; padding: 20px; background-color: #1e1e1e; border: 1px solid var(--border); border-radius: 6px; text-align: center;">
+                    <i class="fa-solid fa-file-export" style="font-size: 24px; color: var(--accent); margin-bottom: 10px; display: block;"></i>
+                    <h4 style="margin: 0 0 10px 0;">Eksportuj historię</h4>
+                    <p style="font-size: 12px; color: #888; margin-bottom: 20px; min-height: 35px;">Zapisz obecną historię wpłat w formie pliku CSV - do odczytu w Excel lub Numbers.</p>
+                    <button id="btn-export-csv" class="btn secondary" style="width: 100%;">Eksportuj Plik</button>
+                </div>
+                
+                <!-- SEKCJA IMPORTU -->
+                <div style="flex: 1; padding: 20px; background-color: #1e1e1e; border: 1px solid var(--border); border-radius: 6px; text-align: center;">
+                    <i class="fa-solid fa-file-import" style="font-size: 24px; color: #4CAF50; margin-bottom: 10px; display: block;"></i>
+                    <h4 style="margin: 0 0 10px 0;">Importuj transakcje</h4>
+                    <p style="font-size: 12px; color: #888; margin-bottom: 20px; min-height: 35px;">Dodaj historię wpłat z pliku CSV wyeksportowanego z Excel lub Numbers.</p>
+                    <input type="file" id="csv-import-file" accept=".csv" style="display: none;">
+                    <button id="btn-trigger-import-csv" class="btn secondary" style="width: 100%;">Wybierz plik CSV</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
 
     <script src="../dist/renderer.js"></script>

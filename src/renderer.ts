@@ -15,9 +15,16 @@ let currentDeposits: any[] = [];
 // --- USTAWIENIA (LocalStorage) ---
 let userBrokers = JSON.parse(localStorage.getItem('userBrokers') || '[]');
 if (userBrokers.length === 0) {
-    // Domyślna lista przy pierwszym uruchomieniu
-    userBrokers = ["Obligacje skarbowe", "Obligacje korporacyjne", "Akcje XTB", "Akcje Trading 212"];
+    userBrokers = [
+        { name: "Akcje XTB", type: "Akcje" },
+        { name: "Konto Oszczędnościowe", type: "Konta oszczędnościowe" }
+    ];
+    localStorage.setItem('userBrokers', JSON.stringify(userBrokers));
+} else if (typeof userBrokers[0] === 'string') {
+    userBrokers = userBrokers.map((b: string) => ({ name: b, type: "Inne" }));
+    localStorage.setItem('userBrokers', JSON.stringify(userBrokers));
 }
+
 let userPortfolioThreshold = parseInt(localStorage.getItem('userPortfolioThreshold') || '20');
 
 // Nawigacja
@@ -33,7 +40,6 @@ navBtns.forEach(btn => {
         const target = btn.getAttribute('data-target');
         document.getElementById(target!)?.classList.add('active');
         
-        // Zmień cytat, jeśli kliknięto w Dziennik
         if (target === 'journal') {
             setRandomQuote();
         }
@@ -42,40 +48,57 @@ navBtns.forEach(btn => {
 
 
 // --- 2. ZDARZENIA DOM (KLIKALNE KAFELKI I WIDOKI) ---
+const modalSettings = document.getElementById('modal-settings') as HTMLDivElement;
+const brokersListContainer = document.getElementById('setting-brokers-list');
+
+function updateBrokerDropdowns() {
+    const profBrokerSelect = document.getElementById('prof-broker') as HTMLSelectElement;
+    const depDestSelect = document.getElementById('dep-dest') as HTMLSelectElement; 
+    const transferFromSelect = document.getElementById('transfer-from') as HTMLSelectElement; 
+    const transferToSelect = document.getElementById('transfer-to') as HTMLSelectElement; 
+    
+    if (profBrokerSelect) profBrokerSelect.innerHTML = '';
+    if (depDestSelect) depDestSelect.innerHTML = '';
+    if (transferFromSelect) transferFromSelect.innerHTML = '';
+    if (transferToSelect) transferToSelect.innerHTML = '';
+
+    userBrokers.forEach((b: any) => {
+        if (profBrokerSelect) profBrokerSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`;
+        if (depDestSelect) depDestSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`;
+        if (transferFromSelect) transferFromSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`;
+        if (transferToSelect) transferToSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`;
+    });
+}
+
+function renderSettingsBrokers() {
+    if (!brokersListContainer) return;
+    brokersListContainer.innerHTML = '';
+    userBrokers.forEach((broker: any, index: number) => {
+        brokersListContainer.innerHTML += `
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <span><strong>${broker.name}</strong> <small style="color:#aaa;">(${broker.type})</small></span>
+                <button class="btn btn-delete-broker-setting" data-index="${index}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        `;
+    });
+    updateBrokerDropdowns();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- OBSŁUGA MODALA USTAWIŃ ---
-    const modalSettings = document.getElementById('modal-settings') as HTMLDivElement;
     const btnSettings = document.getElementById('btn-settings');
     const btnCloseSettings = document.getElementById('btn-close-settings');
     const selectPortfolioType = document.getElementById('setting-portfolio-type') as HTMLSelectElement;
-    const inputNewBroker = document.getElementById('setting-new-broker') as HTMLInputElement;
-    const btnAddBroker = document.getElementById('btn-add-broker');
     const brokersListContainer = document.getElementById('setting-brokers-list');
 
-    function renderSettingsBrokers() {
-        if (!brokersListContainer) return;
-        brokersListContainer.innerHTML = '';
-        userBrokers.forEach((broker: string, index: number) => {
-            brokersListContainer.innerHTML += `
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                    <span>${broker}</span>
-                    <button class="btn btn-delete-broker-setting" data-index="${index}" style="padding: 2px 8px; font-size: 10px; background-color: #F44336;">Usuń</button>
-                </div>
-            `;
-        });
-        updateBrokerDropdowns();
-    }
+    // Elementy nowego, małego okienka
+    const modalAddBroker = document.getElementById('modal-add-broker') as HTMLDivElement;
+    const btnOpenAddBroker = document.getElementById('btn-open-add-broker');
+    const btnCancelAddBroker = document.getElementById('btn-cancel-add-broker');
+    const btnConfirmAddBroker = document.getElementById('btn-confirm-add-broker');
+    const inputNewBrokerName = document.getElementById('setting-new-broker-name') as HTMLInputElement;
+    const selectNewBrokerType = document.getElementById('setting-new-broker-type') as HTMLSelectElement;
 
-    function updateBrokerDropdowns() {
-        const profBrokerSelect = document.getElementById('prof-broker') as HTMLSelectElement;
-        if (profBrokerSelect) {
-            profBrokerSelect.innerHTML = '';
-            userBrokers.forEach((b: string) => {
-                profBrokerSelect.innerHTML += `<option value="${b}">${b}</option>`;
-            });
-        }
-    }
 
     btnSettings?.addEventListener('click', () => {
         if (selectPortfolioType) selectPortfolioType.value = userPortfolioThreshold.toString();
@@ -90,44 +113,63 @@ document.addEventListener('DOMContentLoaded', () => {
     selectPortfolioType?.addEventListener('change', () => {
         userPortfolioThreshold = parseInt(selectPortfolioType.value);
         localStorage.setItem('userPortfolioThreshold', userPortfolioThreshold.toString());
-        loadData(); // Odświeżamy natychmiast na żywo!
+        loadData(); 
     });
 
-    btnAddBroker?.addEventListener('click', () => {
-        const val = inputNewBroker.value.trim();
-        if (val && !userBrokers.includes(val)) {
-            userBrokers.push(val);
+    // --- LOGIKA NOWEGO MODALA DO DODAWANIA ---
+    // 1. Otwieranie małego modala
+    btnOpenAddBroker?.addEventListener('click', () => {
+        if (inputNewBrokerName) inputNewBrokerName.value = ''; // Czyszczenie pola
+        if (selectNewBrokerType) selectNewBrokerType.value = 'Akcje'; // Domyślna wartość
+        modalAddBroker?.classList.remove('hidden');
+    });
+
+    // 2. Anulowanie
+    btnCancelAddBroker?.addEventListener('click', () => {
+        modalAddBroker?.classList.add('hidden');
+    });
+
+    // 3. Zatwierdzanie i dodawanie do listy
+    btnConfirmAddBroker?.addEventListener('click', () => {
+        const valName = inputNewBrokerName?.value.trim();
+        const valType = selectNewBrokerType ? selectNewBrokerType.value : 'Inne';
+
+        // Zapobiegamy pustości i duplikatom po nazwie
+        if (valName && !userBrokers.find((b:any) => b.name === valName)) {
+            userBrokers.push({ name: valName, type: valType });
             localStorage.setItem('userBrokers', JSON.stringify(userBrokers));
-            inputNewBroker.value = '';
+            
             renderSettingsBrokers();
+            modalAddBroker?.classList.add('hidden'); // Zamykamy małe okienko po sukcesie
         }
     });
 
+    // --- NAPRAWIONE USUWANIE BROKERA ---
     brokersListContainer?.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
-        if (target.classList.contains('btn-delete-broker-setting')) {
-            const index = parseInt(target.getAttribute('data-index')!);
+        // PANCERNA METODA: Szukamy najbliższego przycisku, niezależnie czy kliknięto w tło czy w ikonę
+        const deleteBtn = target.closest('.btn-delete-broker-setting');
+        
+        if (deleteBtn) {
+            const index = parseInt(deleteBtn.getAttribute('data-index')!);
             userBrokers.splice(index, 1);
             localStorage.setItem('userBrokers', JSON.stringify(userBrokers));
             renderSettingsBrokers();
         }
     });
 
-    // Inicjacja selecta przy starcie
     updateBrokerDropdowns();
 
     document.getElementById('btn-back-to-stocks')?.addEventListener('click', () => {
         document.querySelector<HTMLElement>('[data-target="portfolio-stocks"]')?.click();
     });
     
-    // Przełączanie widoku Wykres <-> Tabela w podsumowaniu
     const btnToggleAlloc = document.getElementById('btn-toggle-allocation');
     const viewChart = document.getElementById('allocation-view-chart');
     const viewTable = document.getElementById('allocation-view-table');
 
     if (btnToggleAlloc && viewChart && viewTable) {
         viewTable.style.display = 'none';
-
         btnToggleAlloc.addEventListener('click', () => {
             if (viewChart.style.display !== 'none') {
                 viewChart.style.display = 'none';
@@ -141,14 +183,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Przełączanie widoku Wykres <-> Tabela dla Wzrostu Portfela (Prawy górny)
     const btnToggleGrowth = document.getElementById('btn-toggle-growth');
     const viewGrowthChart = document.getElementById('growth-view-chart');
     const viewGrowthTable = document.getElementById('growth-view-table');
 
     if (btnToggleGrowth && viewGrowthChart && viewGrowthTable) {
         viewGrowthTable.style.display = 'none';
-
         btnToggleGrowth.addEventListener('click', () => {
             if (viewGrowthChart.style.display !== 'none') {
                 viewGrowthChart.style.display = 'none';
@@ -162,7 +202,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Klikalny kafelek "Całkowita wartość depozytów"
     const statCard = document.getElementById('clickable-stat-card');
     const statTitle = document.getElementById('stat-card-title');
     const statVal = document.getElementById('total-assets-val');
@@ -187,19 +226,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-
-// --- OBSŁUGA MODALA STRATEGII ---
+    // --- OBSŁUGA MODALA STRATEGII ---
     const modalStrategy = document.getElementById('modal-strategy');
     const btnOpenStrategy = document.getElementById('open-strategy');
     const btnCloseStrategy = document.getElementById('btn-close-strategy');
     const btnEditStrategy = document.getElementById('btn-edit-strategy');
     const btnSaveStrategy = document.getElementById('btn-save-strategy');
-    const btnCancelStrategy = document.getElementById('btn-cancel-strategy'); // Dodany przycisk
+    const btnCancelStrategy = document.getElementById('btn-cancel-strategy');
     const strategyViewMode = document.getElementById('strategy-view-mode');
     const strategyEditMode = document.getElementById('strategy-edit-mode');
     const strategyTextarea = document.getElementById('strategy-textarea') as HTMLTextAreaElement;
 
-    // Pobieranie strategii przy starcie (lub po anulowaniu)
     function loadStrategy() {
         const savedStrategy = localStorage.getItem('userStrategy') || 'Brak zapisanej strategii. Kliknij "Edytuj Strategię", aby wkleić swoje zasady.';
         if (strategyViewMode) strategyViewMode.innerText = savedStrategy;
@@ -207,71 +244,172 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadStrategy();
 
-    // Otwieranie okienka (zawsze otwiera się w trybie czytania)
     btnOpenStrategy?.addEventListener('click', () => {
         loadStrategy();
-        
         if (strategyViewMode) strategyViewMode.style.display = 'block';
         if (strategyEditMode) strategyEditMode.style.display = 'none';
-        
         if (btnEditStrategy) btnEditStrategy.style.display = 'block';
         if (btnSaveStrategy) btnSaveStrategy.style.display = 'none';
-        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; // Ukryj Anuluj
-        
+        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; 
         modalStrategy?.classList.remove('hidden');
     });
 
-    // Zamykanie okienka krzyżykiem
     btnCloseStrategy?.addEventListener('click', () => {
         modalStrategy?.classList.add('hidden');
     });
 
-    // Przełączanie w tryb edycji
     btnEditStrategy?.addEventListener('click', () => {
         if (strategyViewMode) strategyViewMode.style.display = 'none';
         if (strategyEditMode) strategyEditMode.style.display = 'block';
-        
         if (btnEditStrategy) btnEditStrategy.style.display = 'none';
         if (btnSaveStrategy) btnSaveStrategy.style.display = 'block';
-        if (btnCancelStrategy) btnCancelStrategy.style.display = 'block'; // Pokaż Anuluj
+        if (btnCancelStrategy) btnCancelStrategy.style.display = 'block'; 
     });
 
-    // ANULOWANIE ZMIAN
     btnCancelStrategy?.addEventListener('click', () => {
-        loadStrategy(); // Resetuje textarea do ostatnio zapisanej wersji
-        
+        loadStrategy(); 
         if (strategyEditMode) strategyEditMode.style.display = 'none';
         if (strategyViewMode) strategyViewMode.style.display = 'block';
-        
         if (btnSaveStrategy) btnSaveStrategy.style.display = 'none';
-        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; // Ukryj Anuluj
+        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; 
         if (btnEditStrategy) btnEditStrategy.style.display = 'block';
     });
 
-    // Zapisywanie zmian i powrót do trybu czytania
     btnSaveStrategy?.addEventListener('click', () => {
         const newStrategy = strategyTextarea?.value || '';
         localStorage.setItem('userStrategy', newStrategy);
         loadStrategy(); 
-        
         if (strategyEditMode) strategyEditMode.style.display = 'none';
         if (strategyViewMode) strategyViewMode.style.display = 'block';
-        
         if (btnSaveStrategy) btnSaveStrategy.style.display = 'none';
-        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; // Ukryj Anuluj
+        if (btnCancelStrategy) btnCancelStrategy.style.display = 'none'; 
         if (btnEditStrategy) btnEditStrategy.style.display = 'block';
     });
 
 });
 
 // --- 3. OBSŁUGA MODALI WPŁAT I ZYSKÓW ---
-// --- 3. OBSŁUGA MODALI WPŁAT I ZYSKÓW ---
+
+// --- IMPORT / EKSPORT WPŁAT Z CSV ---
+const modalCsv = document.getElementById('modal-csv') as HTMLDivElement;
+const btnOpenCsv = document.getElementById('btn-csv');
+const btnCloseCsv = document.getElementById('btn-close-csv');
+const btnExportCsv = document.getElementById('btn-export-csv');
+const btnTriggerImportCsv = document.getElementById('btn-trigger-import-csv');
+const csvImportInput = document.getElementById('csv-import-file') as HTMLInputElement;
+
+// 1. Otwieranie / Zamykanie Modala
+btnOpenCsv?.addEventListener('click', () => modalCsv?.classList.remove('hidden'));
+btnCloseCsv?.addEventListener('click', () => modalCsv?.classList.add('hidden'));
+btnTriggerImportCsv?.addEventListener('click', () => csvImportInput?.click());
+
+// 2. Eksportowanie do CSV
+btnExportCsv?.addEventListener('click', () => {
+    if (!currentDeposits || currentDeposits.length === 0) {
+        alert("Nie ma żadnych wpłat do wyeksportowania.");
+        return;
+    }
+
+    // Dodajemy nagłówki, zachowując 4 pierwsze kolumny tak, by pasowały do Importu.
+    // Dodajemy też 2 dodatkowe kolumny (Kurs NBP i Wartość PLN) dla celów archiwalnych.
+    let csvContent = "Data;Kwota;Waluta;Konto;Kurs NBP;Wartosc PLN\n";
+
+    // Formatowanie polskich wartości z kropkami na przecinki (dla Excela)
+    currentDeposits.forEach(d => {
+        const amountStr = d.amount.toString().replace('.', ',');
+        const rateStr = d.exchange_rate.toString().replace('.', ',');
+        const plnStr = d.amount_pln.toString().replace('.', ',');
+        
+        csvContent += `${d.date};${amountStr};${d.currency};${d.destination};${rateStr};${plnStr}\n`;
+    });
+
+    // Tworzenie pliku w pamięci przeglądarki z obsługą polskich znaków
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `moje_wplaty_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    modalCsv?.classList.add('hidden');
+});
+
+// 3. Importowanie z CSV (z NBP w tle)
+async function getHistoricalRateForImport(currency: string, targetDate: string): Promise<number> {
+    if (currency === 'PLN') return 1.0;
+    let dateObj = new Date(targetDate);
+    for (let i = 0; i < 5; i++) {
+        const dStr = dateObj.toISOString().split('T')[0];
+        try {
+            const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${currency}/${dStr}?format=json`);
+            if (res.ok) {
+                const data = await res.json();
+                return data.rates[0].mid;
+            }
+        } catch (e) {}
+        dateObj.setDate(dateObj.getDate() - 1);
+    }
+    return 1.0;
+}
+
+csvImportInput?.addEventListener('change', async (e) => {
+    const target = e.target as HTMLInputElement;
+    if (!target.files || target.files.length === 0) return;
+    
+    const file = target.files[0];
+    const text = await file.text();
+    const lines = text.split('\n');
+
+    modalCsv?.classList.add('hidden'); // Chowamy modal, bo proces się rozpoczął
+    alert("Rozpoczynam import... Jeśli wgrywasz waluty obce, skrypt w tle połączy się z NBP po kursy historyczne. Pamiętaj by kliknąć OK i cierpliwie poczekać.");
+    
+    let importedCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const separator = line.includes(';') ? ';' : ',';
+        const parts = line.split(separator).map(p => p.trim());
+        
+        if (parts.length >= 4) {
+            const date = parts[0];
+            // Pomijamy nagłówki lub błędne rzędy
+            if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) continue; 
+            
+            const amount = parseFloat(parts[1].replace(',', '.'));
+            const currency = parts[2].toUpperCase();
+            const destination = parts[3];
+            
+            if (!isNaN(amount) && date) {
+                const rate = await getHistoricalRateForImport(currency, date);
+                const deposit = {
+                    date: date,
+                    amount: amount,
+                    currency: currency,
+                    exchange_rate: rate,
+                    amount_pln: amount * rate,
+                    destination: destination
+                };
+                await (window as any).api.addDeposit(deposit);
+                importedCount++;
+            }
+        }
+    }
+    
+    target.value = ''; 
+    alert(`Sukces! Przeanalizowano i dodano pomyślnie ${importedCount} wpłat.`);
+    loadData();
+});
+
 const modalDeposit = document.getElementById('modal-deposit') as HTMLDivElement;
 const modalProfit = document.getElementById('modal-profit') as HTMLDivElement;
 
 document.getElementById('btn-new-deposit')?.addEventListener('click', () => {
     const title = document.getElementById('modal-dep-title');
-    if (title) title.innerText = 'Nowa Wpłata';
+    if (title) title.innerText = 'Nowa Wpłata / Wypłata';
     
     (document.getElementById('dep-id') as HTMLInputElement).value = '';
     (document.getElementById('dep-date') as HTMLInputElement).valueAsDate = new Date();
@@ -347,6 +485,125 @@ depAmount?.addEventListener('input', updateRate);
 depDate?.addEventListener('change', updateRate);
 
 // ZAPIS WPŁAT (I EDYCJA)
+
+// --- OBSŁUGA TRANSFERÓW MIĘDZY KONTAMI ---
+const modalTransfer = document.getElementById('modal-transfer') as HTMLDivElement;
+const btnTransfer = document.getElementById('btn-transfer');
+
+btnTransfer?.addEventListener('click', () => {
+    (document.getElementById('transfer-date') as HTMLInputElement).valueAsDate = new Date();
+    (document.getElementById('transfer-amount') as HTMLInputElement).value = '';
+    modalTransfer?.classList.remove('hidden');
+});
+
+document.getElementById('btn-cancel-transfer')?.addEventListener('click', () => {
+    modalTransfer?.classList.add('hidden');
+});
+
+// Pobieranie kursów NBP dla transferu (jeśli przelewasz waluty obce)
+const transferCurrency = document.getElementById('transfer-currency') as HTMLSelectElement;
+const transferAmount = document.getElementById('transfer-amount') as HTMLInputElement;
+const transferDate = document.getElementById('transfer-date') as HTMLInputElement;
+const transferRateInfo = document.getElementById('transfer-rate-info') as HTMLDivElement;
+let currentTransferRate = 1.0;
+
+async function updateTransferRate() {
+    if (!transferCurrency || !transferAmount || !transferRateInfo || !transferDate) return;
+    const currency = transferCurrency.value;
+    const amount = parseFloat(transferAmount.value) || 0;
+    const selectedDate = transferDate.value; 
+    
+    if (currency === 'PLN') {
+        currentTransferRate = 1.0;
+        transferRateInfo.innerText = '';
+        return;
+    }
+
+    if (!selectedDate) {
+        transferRateInfo.innerText = 'Wybierz datę...';
+        currentTransferRate = 1.0;
+        return;
+    }
+
+    transferRateInfo.innerText = 'Pobieranie kursu NBP...';
+    let dateObj = new Date(selectedDate);
+    let foundRate = null;
+    let rateDate = '';
+
+    for (let i = 0; i < 5; i++) {
+        const dStr = dateObj.toISOString().split('T')[0];
+        try {
+            const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${currency}/${dStr}?format=json`);
+            if (res.ok) {
+                const data = await res.json();
+                foundRate = data.rates[0].mid;
+                rateDate = dStr;
+                break; 
+            }
+        } catch (e) {}
+        dateObj.setDate(dateObj.getDate() - 1);
+    }
+
+    if (foundRate !== null) {
+        currentTransferRate = foundRate;
+        transferRateInfo.innerText = `Kurs NBP z ${rateDate}: ${currentTransferRate.toFixed(4)} PLN. Przeliczono na: ${(amount * currentTransferRate).toFixed(2)} PLN`;
+    } else {
+        transferRateInfo.innerText = 'Błąd pobierania kursu. Użyto 1:1.';
+        currentTransferRate = 1.0;
+    }
+}
+
+transferCurrency?.addEventListener('change', updateTransferRate);
+transferAmount?.addEventListener('input', updateTransferRate);
+transferDate?.addEventListener('change', updateTransferRate);
+
+// ZAPIS TRANSFERU (Tworzy podwójny wpis w bazie)
+document.getElementById('btn-save-transfer')?.addEventListener('click', async () => {
+    const amount = parseFloat(transferAmount?.value) || 0;
+    const from = (document.getElementById('transfer-from') as HTMLSelectElement).value;
+    const to = (document.getElementById('transfer-to') as HTMLSelectElement).value;
+
+    if (amount <= 0) {
+        alert("Kwota transferu musi być większa od zera!");
+        return;
+    }
+    if (from === to) {
+        alert("Konto źródłowe i docelowe muszą być różne!");
+        return;
+    }
+
+    const date = transferDate.value;
+    const currency = transferCurrency.value;
+
+    // 1. Tworzymy ujemny wpis (zabieramy ze źródła)
+    const withdrawal = {
+        date: date,
+        amount: -amount,
+        currency: currency,
+        exchange_rate: currentTransferRate,
+        amount_pln: -amount * currentTransferRate,
+        destination: from
+    };
+
+    // 2. Tworzymy dodatni wpis (dodajemy do celu)
+    const deposit = {
+        date: date,
+        amount: amount,
+        currency: currency,
+        exchange_rate: currentTransferRate,
+        amount_pln: amount * currentTransferRate,
+        destination: to
+    };
+
+    // Zapisujemy obie operacje do bazy danych
+    await (window as any).api.addDeposit(withdrawal);
+    await (window as any).api.addDeposit(deposit);
+
+    modalTransfer?.classList.add('hidden');
+    loadData(); // Odświeżamy widok!
+});
+
+
 document.getElementById('btn-save-deposit')?.addEventListener('click', async () => {
     const amount = parseFloat(depAmount?.value) || 0;
     const deposit = {
@@ -384,7 +641,6 @@ document.getElementById('btn-save-profit')?.addEventListener('click', async () =
 });
 
 // KLIKANIE EDYTUJ/USUŃ W TABELI WPŁAT
-// KLIKANIE EDYTUJ/USUŃ W TABELI WPŁAT
 document.getElementById('deposits-tbody')?.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement;
     const deleteBtn = target.closest('.btn-delete-dep');
@@ -392,19 +648,16 @@ document.getElementById('deposits-tbody')?.addEventListener('click', async (e) =
     const moreBtn = target.closest('.btn-more-dep');
     const closeBtn = target.closest('.btn-close-slider');
 
-    // Obsługa animacji przesunięcia w lewo
     if (moreBtn) {
         const id = moreBtn.getAttribute('data-id');
         const slider = document.getElementById(`slider-dep-${id}`);
-        if (slider) slider.style.transform = 'translateX(-50%)'; // Przesuwa panel
+        if (slider) slider.style.transform = 'translateX(-50%)'; 
     }
-    // Obsługa animacji powrotu (krzyżyk)
     else if (closeBtn) {
         const id = closeBtn.getAttribute('data-id');
         const slider = document.getElementById(`slider-dep-${id}`);
-        if (slider) slider.style.transform = 'translateX(0)'; // Wraca na miejsce
+        if (slider) slider.style.transform = 'translateX(0)'; 
     }
-    // Faktyczne usuwanie
     else if (deleteBtn) {
         const id = parseInt(deleteBtn.getAttribute('data-id')!);
         if (confirm("Czy na pewno chcesz usunąć tę wpłatę z historii? (Zmieni to całkowite saldo!)")) {
@@ -412,7 +665,6 @@ document.getElementById('deposits-tbody')?.addEventListener('click', async (e) =
             loadData();
         }
     } 
-    // Faktyczna edycja
     else if (editBtn) {
         const id = parseInt(editBtn.getAttribute('data-id')!);
         const dep = currentDeposits.find(x => x.id === id);
@@ -438,7 +690,6 @@ async function loadData() {
     const deposits = await (window as any).api.getDeposits();
     const profits = await (window as any).api.getProfits();
     
-    // TABELA: HISTORIA WPŁAT
     const tbodyDep = document.getElementById('deposits-tbody');
     if (tbodyDep) tbodyDep.innerHTML = '';
     
@@ -450,7 +701,7 @@ async function loadData() {
 
     currentDeposits = deposits;
 
-deposits.forEach((d: any) => {
+    deposits.forEach((d: any) => {
         totalAssetsPLN += d.amount_pln;
         allocation[d.destination] = (allocation[d.destination] || 0) + d.amount_pln;
 
@@ -461,6 +712,7 @@ deposits.forEach((d: any) => {
             totalEurAmount += d.amount;
             totalEurPln += d.amount_pln;
         }
+
 
         if (tbodyDep) {
             tbodyDep.innerHTML += `
@@ -519,12 +771,22 @@ deposits.forEach((d: any) => {
     if (eurEl) eurEl.innerText = avgEur > 0 ? `${avgEur.toFixed(4)} PLN` : '-';
 
     const allocMap = {
-        akcje: (allocation['Akcje'] || 0) + (allocation['Akcje 2'] || 0),
-        skarbowe: allocation['Obligacje skarbowe'] || 0,
-        korpo: allocation['Obligacje korporacyjne'] || 0,
-        konto: allocation['Konto oszczędnościowe'] || 0,
-        inne: allocation['Inne'] || 0
+        akcje: 0, skarbowe: 0, korpo: 0, konto: 0, krypto: 0, metale: 0, inne: 0
     };
+
+    Object.keys(allocation).forEach(brokerName => {
+        const amount = allocation[brokerName];
+        const brokerObj = userBrokers.find((b:any) => b.name === brokerName);
+        const brokerType = brokerObj ? brokerObj.type : 'Inne';
+
+        if (brokerType === 'Akcje') allocMap.akcje += amount;
+        else if (brokerType === 'Obligacje skarbowe krajowe') allocMap.skarbowe += amount;
+        else if (brokerType === 'Obligacje korporacyjne i zagraniczne') allocMap.korpo += amount;
+        else if (brokerType === 'Konta oszczędnościowe') allocMap.konto += amount;
+        else if (brokerType === 'Kryptowaluty') allocMap.krypto += amount;
+        else if (brokerType === 'Metale szlachetne') allocMap.metale += amount;
+        else allocMap.inne += amount;
+    });
 
     const tbodyAlloc = document.getElementById('allocation-tbody');
     if (tbodyAlloc) {
@@ -534,7 +796,7 @@ deposits.forEach((d: any) => {
                 <td style="padding: 10px; text-align: right;">${allocMap.akcje.toFixed(2)} zł</td>
             </tr>
             <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 10px;">Obligacje krajowe</td>
+                <td style="padding: 10px;">Obligacje skarbowe krajowe</td>
                 <td style="padding: 10px; text-align: right;">${allocMap.skarbowe.toFixed(2)} zł</td>
             </tr>
             <tr style="border-bottom: 1px solid var(--border);">
@@ -542,11 +804,19 @@ deposits.forEach((d: any) => {
                 <td style="padding: 10px; text-align: right;">${allocMap.korpo.toFixed(2)} zł</td>
             </tr>
             <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 10px;">Konta oszczędnościowe <small style="color: #aaa;">(wpisz odpowiednie tutaj)</small></td>
+                <td style="padding: 10px;">Konta oszczędnościowe</td>
                 <td style="padding: 10px; text-align: right;">${allocMap.konto.toFixed(2)} zł</td>
             </tr>
             <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 10px;">Inne <small style="color: #aaa;">(wpisz odpowiednie tutaj)</small></td>
+                <td style="padding: 10px;">Kryptowaluty</td>
+                <td style="padding: 10px; text-align: right;">${allocMap.krypto.toFixed(2)} zł</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px;">Metale szlachetne</td>
+                <td style="padding: 10px; text-align: right;">${allocMap.metale.toFixed(2)} zł</td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 10px;">Inne</td>
                 <td style="padding: 10px; text-align: right;">${allocMap.inne.toFixed(2)} zł</td>
             </tr>
         `;
@@ -571,8 +841,6 @@ deposits.forEach((d: any) => {
         }
     }
 
-
-    // TABELE PODATKÓW WRAZ Z SUMĄ NETTO ROKU
     const taxesContainer = document.getElementById('taxes-container');
     if(taxesContainer) taxesContainer.innerHTML = '';
 
@@ -648,25 +916,66 @@ deposits.forEach((d: any) => {
         if(taxesContainer) taxesContainer.innerHTML += tableHTML;
     });
 
-    renderCharts(allocation, deposits, profits);
+
     loadAssetsData();
     loadJournalData();
+
+    const allChartsWrapper = document.getElementById('all-charts');
+    const emptyLabel = document.getElementById('empty-label');
+
+    if (totalAssetsPLN === 0) {
+        // Jeśli portfel jest pusty - ukryj
+        if (allChartsWrapper) allChartsWrapper.style.display = 'none';
+        if (emptyLabel) emptyLabel.style.display = '';
+
+
+
+
+        const dashboardBtn = document.querySelector('button[data-target="dashboard"]');
+        // Sprawdzamy, czy ma klasę 'active'
+        if (dashboardBtn && dashboardBtn.classList.contains('active')) {
+            modalSettings?.classList.remove('hidden');
+            renderSettingsBrokers();
+        }
+
+
+
+    } else {
+        // Zresetuj ukrycie, niech zadziała oryginalny CSS z `charts-container`
+        if (allChartsWrapper) allChartsWrapper.style.display = ''; 
+        if (emptyLabel) emptyLabel.style.display = 'none';
+        renderCharts(allocMap, deposits, profits);
+    }
 }
 
-
 // --- 6. RYSOWANIE WYKRESÓW GŁÓWNYCH ---
-function renderCharts(allocation: Record<string, number>, deposits: any[], profits: any[]) {
+function renderCharts(allocMap: Record<string, number>, deposits: any[], profits: any[]) {
     const ctxAlloc = document.getElementById('allocationChart') as HTMLCanvasElement;
     if (allocChart) allocChart.destroy();
+
+    // Filtrujemy kategorie z wartością 0, żeby na wykresie kołowym nie było pustych etykiet
+    const filteredLabels = Object.keys(allocMap).filter(k => allocMap[k] > 0);
+    const filteredData = filteredLabels.map(k => allocMap[k]);
+
+    // Mapowanie przyjaznych nazw do wykresu
+    const displayLabels = filteredLabels.map(k => {
+        if (k === 'akcje') return 'Akcje';
+        if (k === 'skarbowe') return 'Oblig. skarbowe';
+        if (k === 'korpo') return 'Oblig. korporacyjne';
+        if (k === 'konto') return 'Konto oszczędnościowe';
+        if (k === 'krypto') return 'Kryptowaluty';
+        if (k === 'metale') return 'Metale szlachetne';
+        return 'Inne';
+    });
 
     if (ctxAlloc) {
         allocChart = new (window as any).Chart(ctxAlloc, {
             type: 'doughnut',
             data: {
-                labels: Object.keys(allocation),
+                labels: displayLabels,
                 datasets: [{
-                    data: Object.values(allocation),
-                    backgroundColor: ['#2196F3', '#4CAF50', '#F44336', '#FFC107', '#9C27B0', '#FF5722']
+                    data: filteredData,
+                    backgroundColor: ['#2196F3', '#4CAF50', '#F44336', '#FFC107', '#9C27B0', '#FF5722', '#00BCD4']
                 }]
             },
             options: {
@@ -814,17 +1123,6 @@ function renderCharts(allocation: Record<string, number>, deposits: any[], profi
         else yearlyProfits[year].otherNet += netAmount;
     });
 
-    cachedTotalNetProfit = grandTotalNetProfit;
-
-    const statVal = document.getElementById('total-assets-val');
-    if (statVal && currentStatView === 0) { statVal.innerText = `${cachedTotalDeposits.toFixed(2)} zł`; statVal.style.color = '#fff'; }
-    if (statVal && currentStatView === 1) { statVal.innerText = `${cachedTotalNetProfit.toFixed(2)} zł`; statVal.style.color = cachedTotalNetProfit >= 0 ? '#4CAF50' : '#ff5252'; }
-    if (statVal && currentStatView === 2) { 
-        const roi = cachedTotalDeposits > 0 ? (cachedTotalNetProfit / cachedTotalDeposits) * 100 : 0;
-        statVal.innerText = `${roi.toFixed(2)} %`; 
-        statVal.style.color = roi >= 0 ? '#4CAF50' : '#ff5252'; 
-    }
-
     const sortedYears = Object.keys(yearlyProfits).sort();
     if (sortedYears.length === 0) {
         sortedYears.push(new Date().getFullYear().toString());
@@ -852,7 +1150,7 @@ function renderCharts(allocation: Record<string, number>, deposits: any[], profi
                 maintainAspectRatio: false,
                 responsive: true,
                 scales: { x: { stacked: true }, y: { stacked: true } },
-                plugins: { title: { display: true, text: 'Zysk z inwestycji wg lat (Netto)', color: '#fff' } }
+                plugins: { title: { display: true, text: 'Zysk netto z inwestycji', color: '#fff' } }
             }
         });
     }
@@ -1368,7 +1666,6 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         </tr>
     `;
 
-    // 1. Pobieranie danych portfela (Sprawdzamy co aktualnie POSIADAMY)
     const assets = await (window as any).api.getAssets();
     const ownedTickers = new Set(
         assets
@@ -1376,24 +1673,19 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
             .map((a: any) => a.name.trim().toUpperCase())
     );
 
-    // 2. Pobieranie bazy obserwowanej Watchlisty
     let watchlist = await (window as any).api.getWatchlist();
     if (!watchlist) watchlist = [];
     
     const watchlistTickers = new Set(watchlist.map((w: any) => w.ticker));
 
-    // 3. Automatyczna synchronizacja
-    // Jeśli mamy coś w portfelu, czego nie ma jeszcze w bazie watchlisty - dodajemy cichaczem
     const missingTickers = [...ownedTickers].filter(t => !watchlistTickers.has(t));
     if (missingTickers.length > 0) {
         for (const t of missingTickers) {
             await (window as any).api.addWatchlistTicker(t);
         }
-        // Pobieramy bazę ponownie po zaktualizowaniu
         watchlist = await (window as any).api.getWatchlist();
     }
 
-    // 4. Usuwanie potencjalnych duplikatów
     const uniqueWatchlist: any[] = [];
     const seen = new Set();
     for (const w of watchlist) {
@@ -1414,7 +1706,6 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         return;
     }
 
-    // 5. Równoległe pobieranie kursów z Yahoo
     const promises = uniqueWatchlist.map(async (item: any) => {
         const quote = await (window as any).api
             .getYahooQuote(item.ticker)
@@ -1423,21 +1714,15 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         return { 
             item, 
             quote, 
-            isOwned: ownedTickers.has(item.ticker) // Znacznik dla sortowania
+            isOwned: ownedTickers.has(item.ticker) 
         };
     });
 
     const quotes = await Promise.all(promises);
 
-    // 6. Podział na Posiadane i Obserwowane
     const ownedQuotes = quotes.filter(q => q.isOwned);
     const watchedQuotes = quotes.filter(q => !q.isOwned);
 
-    // 7. Generyczna funkcja do renderowania jednego wiersza
-
-    // 7. Generyczna funkcja do renderowania jednego wiersza
-
-    // 7. Generyczna funkcja do renderowania jednego wiersza
     const renderRow = ({ item, quote, isOwned }: any) => {
         const price = quote?.price != null ? quote.price.toFixed(2) : '-';
         const change = quote?.changePercent != null ? quote.changePercent.toFixed(2) : '-';
@@ -1447,9 +1732,7 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         const peg = quote?.peg != null ? quote.peg.toFixed(2) : '-';
         const name = quote?.name || item.ticker;
         
-        // Inicjały awaryjne (np. DNP.WA -> DN)
         const shortLogo = item.ticker.substring(0, 2).toUpperCase();
-        // Sprawdzamy czy to spółka z USA (brak kropki w tickerze)
         const isUS = !item.ticker.includes('.');
 
         let pegColor = 'var(--text-color)';
@@ -1463,7 +1746,6 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
             ? `<span style="font-size: 11px; color: #aaa; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border);">W portfelu</span>`
             : `<button class="btn btn-delete-wl" data-id="${item.id}" style="padding: 5px 10px; font-size: 11px; background-color: #F44336; color: white;">Usuń</button>`;
 
-        // Struktura awatara (Warstwa tekstu pod spodem, warstwa obrazka na wierzchu)
         let logoHTML = `
             <div style="position: relative; width: 32px; height: 32px; border-radius: 50%; background-color: #333; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
                 <span style="font-weight: bold; font-size: 11px; color: var(--accent); position: absolute; z-index: 1;">
@@ -1472,8 +1754,6 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         `;
 
         if (isUS) {
-            // Dodajemy tło off-white (#f8f9fa) i "drop-shadow", żeby uwidocznić białe logotypy!
-            // Jeśli obrazek nie zostanie znaleziony, element 'onerror' schowa go, a spod spodu wyskoczą inicjały.
             logoHTML += `
                 <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: #f8f9fa; z-index: 2; display: flex; align-items: center; justify-content: center;">
                     <img 
@@ -1492,12 +1772,12 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
                 <td style="display: flex; align-items: center; gap: 12px; padding: 12px;">
                     ${logoHTML}
                     <div>
-                        <div style="font-weight: bold; font-size: 14px;">${name}</div>
-                        <div style="font-size: 11px; color: #888;">${item.ticker}</div>
+                        <div style="font-weight: bold; font-size: 14px;">${item.ticker}</div>
+                        <div style="font-size: 11px; color: #888;">${name}</div>
                     </div>
                 </td>
-                <td>${price}</td>
-                <td style="color: ${changeColor}">${changeSign}${change}%</td>
+                <td style="font-weight: bold;">${price}</td>
+                <td style="color: ${changeColor}; font-weight: bold;">${changeSign}${change}%</td>
                 <td>${pe}</td>
                 <td style="color: ${pegColor}">${peg}</td>
                 <td>${actionHTML}</td>
@@ -1505,14 +1785,13 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         `;
     };
 
-    // 8. Składanie finalnej tabeli z nagłówkami grupującymi
     let finalHTML = '';
 
     if (ownedQuotes.length > 0) {
         finalHTML += `
             <tr style="background-color: rgba(255,255,255,0.05);">
-                <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px; text-transform: uppercase;">
-                    <i class="fa-solid fa-table-cells" style="margin-right: 8px;"></i> Posiadane
+                <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: var(--accent); letter-spacing: 1px; text-transform: uppercase;">
+                    <i class="fa-solid fa-briefcase" style="margin-right: 8px;"></i> Posiadane w portfelu
                 </td>
             </tr>
         `;
@@ -1523,7 +1802,7 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         finalHTML += `
             <tr style="background-color: rgba(255,255,255,0.02);">
                 <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px; text-transform: uppercase;">
-                    <i class="fa-solid fa-bookmark" style="margin-right: 8px;"></i> Pozostałe
+                    <i class="fa-solid fa-eye" style="margin-right: 8px;"></i> Obserwowane
                 </td>
             </tr>
         `;

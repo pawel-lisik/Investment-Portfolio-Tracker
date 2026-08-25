@@ -7,9 +7,11 @@
     --bottom-bar-bg: #252526;
     --text-color: #d4d4d4;
     --accent: #007acc;
+    --btn-accent-border: #005f9e;
     --accent-hover: #005f9e;
     --border: #3e3e42;
-    --success: #388e3c;
+    --btn: #909090;
+    --btn-border: #c7c7c7;
     --red: #ff383c;
     --purple: #6155f5;
 }
@@ -121,7 +123,6 @@ body {
 }
 
 .nav-btn:hover {
-    background-color: #2a2d2e;
     color: #ccc;
 }
 
@@ -163,7 +164,15 @@ body {
 }
 
 .btn.secondary {
-    background-color: var(--success);
+    background-color: var(--btn);
+    border: 1px solid var(--btn-border);
+    border-radius: 15px;
+}
+
+.btn.accent {
+    background-color: var(--accent);
+    border: 1px solid var(--btn-accent-border);
+    border-radius: 15px;
 }
 
 .stats-grid {
