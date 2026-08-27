@@ -1,794 +1,864 @@
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Investment Portfolio Tracker</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@3.1.0/dist/chartjs-chart-treemap.min.js"></script>
-</head>
-<body>
-    <div class="main-content">
-        <div id="dashboard" class="tab-content active">
-            <div class="header">
-                <h1>Podsumowanie Aktywów</h1> 
-                <button id="btn-settings" class="btn primary" style="font-size: 30px" title="Konto"><i class="fa-solid fa-circle-user"></i></button>
-            </div>
-
-            <div id="empty-label">
-                <p>Dodaj depozyty i zyski, aby zobaczyć podsumowanie aktywów.</p>
-            </div>
-
-            <div class="charts-container" id="all-charts">
-<!-- Lewy górny wykres (Z opcją przełączania na tabelę) -->
-                <div class="chart-box" style="height: 450px; position: relative; display: flex; flex-direction: column;">
-                    
-                            <!-- OSTRZEŻENIE O ALOKACJI -->
-                    <div id="portfolio-warning" class="hidden" style="margin-right: 120px; padding: 15px; background-color: rgba(244, 67, 54, 0.1); border: 1px solid #F44336; border-radius: 4px; color: #ff5252; font-size: 14px;">
-                        <i class="fa-solid fa-triangle-exclamation"></i> <strong>Uwaga:</strong> Udział akcji w portfelu wynosi <span id="warning-percent"></span>, co zwiększa zmienność i profil ryzyka inwestycyjnego!
-                    </div>
-                    
-                    <!-- Przycisk do przełączania -->
-                    <button id="btn-toggle-allocation" class="btn" style="position: absolute; top: 15px; right: 15px; z-index: 10; padding: 5px 12px; font-size: 12px; background-color: #444; border: 1px solid var(--border);">
-                        <i class="fas fa-table"></i> Tabela 
-                    </button>
-                    
-                    <!-- WIDOK WYKRESU -->
-                    <div id="allocation-view-chart" style="width: 100%; height: 100%; position: relative;">
-                        <canvas id="allocationChart"></canvas>
-                    </div>
-
-                    <!-- WIDOK TABELI (odwzorowanie Excela) -->
-                    <div id="allocation-view-table" style="width: 100%; height: 100%; overflow-y: auto; margin-top: 35px; display: none;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 14px; text-align: left;">
-                            <thead>
-                                <tr>
-                                    <th colspan="2" style="background-color: #fbbc05; color: #000; padding: 8px; text-align: center; font-size: 16px;">Aktywa łącznie (depozyty bez zysku):</th>
-                                </tr>
-                                <tr style="border-bottom: 2px solid var(--border);">
-                                    <th style="padding: 10px;">Opis:</th>
-                                    <th style="padding: 10px; text-align: right;">Wartość (PLN)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="allocation-tbody">
-                                <!-- Tutaj skrypt wstawi dane -->
-                            </tbody>
-                            <tfoot>
-                                <tr style="background-color: #444; font-weight: bold; border-top: 2px solid var(--border);">
-                                    <td style="padding: 10px;">Razem:</td>
-                                    <td id="allocation-total" style="padding: 10px; text-align: right;">0.00 zł</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
+    <!DOCTYPE html>
+    <html lang="pl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Investment Portfolio Tracker</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <link rel="stylesheet" href="styles.css">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@3.1.0/dist/chartjs-chart-treemap.min.js"></script>
+    </head>
+    <body>
+        <div class="main-content">
+            <div id="dashboard" class="tab-content active">
+                <div class="header">
+                    <h1>Podsumowanie Aktywów</h1> 
+                    <button id="btn-settings" class="btn primary" style="font-size: 30px" title="Konto"><i class="fa-solid fa-circle-user"></i></button>
                 </div>
 
-
-
-<!-- Prawy górny wykres (Z opcją przełączania na tabelę skumulowaną) -->
-                <div class="chart-box" style="height: 450px; position: relative; display: flex; flex-direction: column;">
-                    
-                    <!-- Przycisk do przełączania (Wzrost Portfela) -->
-                    <button id="btn-toggle-growth" class="btn" style="position: absolute; top: 15px; right: 15px; z-index: 10; padding: 5px 12px; font-size: 12px; background-color: #444; border: 1px solid var(--border);">
-                        <i class="fas fa-table"></i> Tabela 
-                    </button>
-                    
-                    <!-- WIDOK WYKRESU LINIOWEGO -->
-                    <div id="growth-view-chart" style="width: 100%; height: 100%; position: relative;">
-                        <canvas id="growthChart"></canvas>
-                    </div>
-
-                    <!-- WIDOK TABELI KUMULACYJNEJ (odwzorowanie Excela) -->
-                    <div id="growth-view-table" style="width: 100%; height: 100%; overflow-y: auto; margin-top: 35px; display: none;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: right;">
-                            <thead>
-                                <tr>
-                                    <th colspan="4" style="background-color: #6a9b9a; color: #fff; padding: 8px; text-align: center; font-size: 14px;">Depozyty do zysków z inwestycji kumulacyjnie w latach:</th>
-                                </tr>
-                                <tr style="background-color: #92cdcc; color: #fff; border-bottom: 2px solid var(--border);">
-                                    <th style="padding: 8px; text-align: left;">Rok:</th>
-                                    <th style="padding: 8px;">Depozyty:</th>
-                                    <th style="padding: 8px;">Zysk netto:</th>
-                                    <th style="padding: 8px;">Inwestycje łącznie:</th>
-                                </tr>
-                            </thead>
-                            <tbody id="growth-tbody">
-                                <!-- Tutaj skrypt wstawi dane kumulacyjne -->
-                            </tbody>
-                        </table>
-                    </div>
+                <div id="empty-label">
+                    <p style="text-align: center">Dodaj depozyty i zyski, aby zobaczyć podsumowanie aktywów.</p>
                 </div>
 
+                <div class="charts-container" id="all-charts">
+    <!-- Lewy górny wykres (Z opcją przełączania na tabelę) -->
+                    <div class="chart-box" style="height: 450px; position: relative; display: flex; flex-direction: column;">
+                        
+                                <!-- OSTRZEŻENIE O ALOKACJI -->
+                        <div id="portfolio-warning" class="hidden" style="margin-right: 120px; padding: 15px; background-color: rgba(244, 67, 54, 0.1); border: 1px solid #F44336; border-radius: 4px; color: #ff5252; font-size: 14px;">
+                            <i class="fa-solid fa-triangle-exclamation"></i> <strong>Uwaga:</strong> Udział akcji w portfelu wynosi <span id="warning-percent"></span>, co zwiększa zmienność i profil ryzyka inwestycyjnego!
+                        </div>
+                        
+                        <!-- Przycisk do przełączania -->
+                        <button id="btn-toggle-allocation" class="btn secondary" style="position: absolute; top: 15px; right: 15px; z-index: 10; padding: 5px 12px; font-size: 12px;">
+                            <i class="fas fa-table"></i> Tabela 
+                        </button>
+                        
+                        <!-- WIDOK WYKRESU -->
+                        <div id="allocation-view-chart" style="width: 100%; height: 100%; position: relative;">
+                            <canvas id="allocationChart"></canvas>
+                        </div>
 
-    <!-- NOWY KONTENER NA WYKRES SKUMULOWANY ZYSKÓW -->
-    <!-- DOLNY RZĄD WYKRESÓW ZYSKU I ZWROTU -->
-                <div class="charts-container">
+                        <!-- WIDOK TABELI (odwzorowanie Excela) -->
+                        <div id="allocation-view-table" style="width: 100%; height: 100%; overflow-y: auto; margin-top: 35px; display: none;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 14px; text-align: left;">
+                                <thead>
+                                    <tr>
+                                        <th colspan="2" style="background-color: #fbbc05; color: #000; padding: 8px; text-align: center; font-size: 16px;">Aktywa łącznie (depozyty bez zysku):</th>
+                                    </tr>
+                                    <tr style="border-bottom: 2px solid var(--border);">
+                                        <th style="padding: 10px;">Opis:</th>
+                                        <th style="padding: 10px; text-align: right;">Wartość (PLN)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allocation-tbody">
+                                    <!-- Tutaj skrypt wstawi dane -->
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background-color: #444; font-weight: bold; border-top: 2px solid var(--border);">
+                                        <td style="padding: 10px;">Razem:</td>
+                                        <td id="allocation-total" style="padding: 10px; text-align: right;">0.00 zł</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+
+
+    <!-- Prawy górny wykres (Z opcją przełączania na tabelę skumulowaną) -->
+                    <div class="chart-box" style="height: 450px; position: relative; display: flex; flex-direction: column;">
+                        
+                        <!-- Przycisk do przełączania (Wzrost Portfela) -->
+                        <button id="btn-toggle-growth" class="btn secondary" style="position: absolute; top: 15px; right: 15px; z-index: 10; padding: 5px 12px; font-size: 12px;">
+                            <i class="fas fa-table"></i> Tabela 
+                        </button>
+                        
+                        <!-- WIDOK WYKRESU LINIOWEGO -->
+                        <div id="growth-view-chart" style="width: 100%; height: 100%; position: relative;">
+                            <canvas id="growthChart"></canvas>
+                        </div>
+
+                        <!-- WIDOK TABELI KUMULACYJNEJ (odwzorowanie Excela) -->
+                        <div id="growth-view-table" style="width: 100%; height: 100%; overflow-y: auto; margin-top: 35px; display: none;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: right;">
+                                <thead>
+                                    <tr>
+                                        <th colspan="4" style="background-color: #6a9b9a; color: #fff; padding: 8px; text-align: center; font-size: 14px;">Depozyty do zysków z inwestycji kumulacyjnie w latach:</th>
+                                    </tr>
+                                    <tr style="background-color: #92cdcc; color: #fff; border-bottom: 2px solid var(--border);">
+                                        <th style="padding: 8px; text-align: left;">Rok:</th>
+                                        <th style="padding: 8px;">Depozyty:</th>
+                                        <th style="padding: 8px;">Zysk netto:</th>
+                                        <th style="padding: 8px;">Inwestycje łącznie:</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="growth-tbody">
+                                    <!-- Tutaj skrypt wstawi dane kumulacyjne -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+
+        <!-- NOWY KONTENER NA WYKRES SKUMULOWANY ZYSKÓW -->
+        <!-- DOLNY RZĄD WYKRESÓW ZYSKU I ZWROTU -->
+                    <div class="charts-container">
+
+                        <div class="chart-box" style="height: 350px; position: relative;">
+                            <canvas id="roiChart"></canvas>
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 20px;">
+                            <div class="stat-card" id="clickable-stat-card" style="cursor: pointer; transition: 0.2s;">
+                                <h3 id="stat-card-title">Całkowita wartość depozytów (PLN)</h3>
+                                <h2 id="total-assets-val">0.00 zł</h2>
+                                <small style="color: #666;">Kliknij, by zmienić widok</small>
+                            </div>
+
+                            <div class="stat-card" id="clickable-currency-card" style="cursor: pointer; transition: 0.2s; flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden;">                            
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; position: relative; z-index: 2;">
+                                    <h3 id="currency-card-title" style="font-size: 36px; margin: 0; color: #fff;">USDPLN</h3>
+                                    <span id="currency-card-current" style="font-size: 13px; color: #aaa; padding: 3px 8px; border-radius: 4px;">Obecny kurs: -- zł</span>
+                                </div>
+                                <small id="currency-description" style="color: #666; margin-top: 10px; margin-bottom: 0; position: relative; z-index: 2;">Średni kurs zakupu USD za PLN przy depozytach:</small>
+                                <h2 id="currency-card-avg" style="margin: 5px 0; position: relative; z-index: 2;">0.0000 zł</h2>
+                                
+                                <p><i class="fa-solid fa-circle"></i>   <i class="fa-regular fa-circle"></i></p>
+                            </div>
+                        </div>
+
+
+                    </div>
 
                     <div class="chart-box" style="height: 350px; position: relative;">
-                        <canvas id="roiChart"></canvas>
-                    </div>
-
-                    <div>
-                        <div class="stat-card" id="clickable-stat-card" style="cursor: pointer; transition: 0.2s;">
-                            <h3 id="stat-card-title">Całkowita wartość depozytów (PLN)</h3>
-                            <h2 id="total-assets-val">0.00 zł</h2>
-                            <small style="color: #666;">Kliknij, by zmienić widok</small>
-                        </div>
-                        <div>
-                            <p> tutaj miejsce na waluty</p>
-                        </div>
+                        <canvas id="profitBarChart"></canvas>
                     </div>
 
 
-                </div>
 
-                <div class="chart-box" style="height: 350px; position: relative;">
-                    <canvas id="profitBarChart"></canvas>
-                </div>
-
-
-
-            </div>
-        </div>
-
-
-        
-
-
-        <!-- ZAKŁADKA WATCHLISTA -->
-        <div id="watchlist" class="tab-content">
-            <div class="header" style="display: flex; align-items: center; gap: 15px;">
-                <div style="display: flex">
-                                <!-- PRZYCISK WSTECZ -->
-                <button id="btn-back-to-stocks" class="btn primary" title="Wróć do Portfela Akcji">
-                    <i class="fa-solid fa-chevron-left"></i>
-                </button>
-                <h1>Obserwowane</h1>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <!-- Niewidoczny input dla pliku TXT -->
-                    <input type="file" id="tv-import-file" accept=".txt" style="display: none;">
-                    <button class="btn primary" onclick="document.getElementById('tv-import-file').click()" title="Importuj watchlistę z TradingView (plik .txt)">
-                        <i class="fa-solid fa-file-import"></i></button>
-                    <button id="btn-new-ticker" class="btn primary" title="Dodaj spółkę do obserwowanych">
-                        <i class="fa-solid fa-plus"></i></button>
-                </div>
-            </div>
-
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Spółka</th>
-                        <th>Cena</th>
-                        <th>Zmiana (1D)</th>
-                        <th>P/E</th>
-                        <th>PEG</th>
-                        <th>Akcje</th>
-                    </tr>
-                </thead>
-                <tbody id="watchlist-tbody"></tbody>
-            </table>
-        </div>
-
-
-
-
-
-
-
-
-
-
-        <div id="history" class="tab-content">
-
-            <div class="header">
-                <h1>Historia Wpłat</h1>
-                <div>
-                    <button id="btn-csv" class="btn primary" title="Importuj / eksportuj historię"><i class="fa-solid fa-file-csv"></i></button>
-
-
-                    <button id="btn-transfer" class="btn primary" title="Transfer między kontami"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
-                    <button id="btn-new-deposit" class="btn primary" title="Nowa wpłata / wypłata"><i class="fa-solid fa-plus"></i></button>
                 </div>
             </div>
 
 
             
 
-            <!-- Dodany kontener wymuszający przewijanie samej tabeli, a nie całej strony -->
-            <div style="max-height: 70vh; overflow-y: auto; border-radius: 6px;">
-                <table class="data-table" style="margin: 0;">
-                    <!-- 'sticky' przykleja nagłówek do góry -->
-                    <thead style="position: sticky; top: 0; z-index: 10;">
+
+            <!-- ZAKŁADKA WATCHLISTA -->
+            <div id="watchlist" class="tab-content">
+                <div class="header" style="display: flex; align-items: center; gap: 15px;">
+                    <div style="display: flex">
+                                    <!-- PRZYCISK WSTECZ -->
+                    <button id="btn-back-to-stocks" class="btn primary" title="Wróć do Portfela Akcji">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <h1>Obserwowane</h1>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <!-- Niewidoczny input dla pliku TXT -->
+                        <input type="file" id="tv-import-file" accept=".txt" style="display: none;">
+                        <button class="btn primary" onclick="document.getElementById('tv-import-file').click()" title="Importuj watchlistę z TradingView (plik .txt)">
+                            <i class="fa-solid fa-file-import"></i></button>
+                        <button id="btn-new-ticker" class="btn primary" title="Dodaj spółkę do obserwowanych">
+                            <i class="fa-solid fa-plus"></i></button>
+                    </div>
+                </div>
+
+                <table class="data-table">
+                    <thead>
                         <tr>
-                            <!-- Dodane tło, aby tekst pod spodem nie prześwitywał podczas przewijania -->
-                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Data</th>
-                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kwota wpłaty</th>
-                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kurs NBP</th>
-                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Wartość w PLN</th>
-                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Konto</th>
-                            <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);"> </th>
+                            <th>Spółka</th>
+                            <th>Cena</th>
+                            <th>Zmiana (1D)</th>
+                            <th>P/E</th>
+                            <th>PEG</th>
+                            <th>Akcje</th>
                         </tr>
                     </thead>
-                    <tbody id="deposits-tbody"></tbody>
+                    <tbody id="watchlist-tbody"></tbody>
                 </table>
             </div>
-        </div>
 
-        <div id="taxes" class="tab-content">
 
-            <div class="header">
-                <h1>Zyski i Podatki</h1>
-                <div>
-                    <button id="btn-new-profit" class="btn primary" title="Dodaj zysk"><i class="fa-solid fa-plus"></i></button>
+
+
+
+
+
+
+
+
+            <div id="history" class="tab-content">
+
+                <div class="header">
+                    <h1>Historia Wpłat</h1>
+                    <div>
+                        <button id="btn-csv" class="btn primary" title="Importuj / eksportuj historię"><i class="fa-solid fa-file-csv"></i></button>
+
+
+                        <button id="btn-transfer" class="btn primary" title="Transfer między kontami"><i class="fa-solid fa-arrow-right-arrow-left"></i></button>
+                        <button id="btn-new-deposit" class="btn primary" title="Nowa wpłata / wypłata"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                </div>
+
+
+                
+
+                <!-- Dodany kontener wymuszający przewijanie samej tabeli, a nie całej strony -->
+                <div style="max-height: 70vh; overflow-y: auto; border-radius: 6px;">
+                    <table class="data-table" style="margin: 0;">
+                        <!-- 'sticky' przykleja nagłówek do góry -->
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <!-- Dodane tło, aby tekst pod spodem nie prześwitywał podczas przewijania -->
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Data</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kwota wpłaty</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kurs NBP</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Wartość w PLN</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Konto</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);"> </th>
+                            </tr>
+                        </thead>
+                        <tbody id="deposits-tbody"></tbody>
+                    </table>
                 </div>
             </div>
-                    <p>Zestawienie roczne zysków z podziałem na komponenty (pod PIT-38).</p>
+
+            <div id="taxes" class="tab-content">
+
+                <div class="header">
+                    <h1>Zyski i Podatki</h1>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="nav-btn" title="Wprowadzone Zyski" data-target="profits-list" style="color: var(--text-color); font-size: 20px; padding-top: 12px"> <i class="fas fa-list"></i></button>
+                        <button id="btn-new-profit" class="btn primary" title="Dodaj zysk"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                </div>
+                    <small style="margin-bottom: 20px; display: block; color: rgba(120, 120, 120, 0.8)">Dodaj zyski z akcji na podstawie PIT-8C lub raportu podatkowego brokera. Aby automatycznie dodać zysk z kuponów zagranicznych i korporacyjnych, dodaj transakcje w zakładce <i>Obligacje</i>.</small>
                     <div id="taxes-container">
                         <!-- Tutaj skrypt wygeneruje tabele dla poszczególnych lat -->
                     </div>
                 </div>
 
-<!-- ZAKŁADKA OBLIGACJI -->
-        <div id="portfolio-bonds" class="tab-content">
-            <div class="header">
-                <h1>Portfel Obligacji</h1>
-                <button id="btn-new-bond" class="btn primary" title="Dodaj obligacje"><i class="fa-solid fa-plus"></i></button>
-            </div>
-
-            <p>Oprócz obligacji z rynku pierwotnego, dodaj tu obligacje skarbowe i korporacyjne kupione na giełdzie. Zyski z kuponów i nalezny podatek zostaną automatycznie obliczone i dodane do zakładki <i>Zyski i Podatki</i>.</p>
-            
-            <div style="height: 400px; margin-bottom: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background-color: #1e1e1e; position: relative;">
-                <canvas id="bondsTreemap"></canvas>
-            </div>
-
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Nazwa Aktywa</th>
-                        <th>Typ</th>
-                        <th>Data zakupu</th>
-                        <th>Ilość / Cena</th>
-                        <th>Wartość całkowita</th>
-                        <th>Informacje o Kuponie</th>
-                        <th>Akcje (Zarządzaj)</th>
-                    </tr>
-                </thead>
-                <tbody id="bonds-tbody"></tbody>
-            </table>
-        </div>
-
-        <!-- ZAKŁADKA AKCJI -->
-        <div id="portfolio-stocks" class="tab-content">
-            <div class="header">
-                <h1>Portfel Akcji</h1>
-                <div style="display: flex; gap: 10px;">
-                    <button class="nav-btn" title="Lista Obserwowanych" data-target="watchlist"> <i class="fas fa-list"></i></button>
-                    <button id="btn-new-stock" class="btn primary" title="Dodaj akcje do portfela"><i class="fa-solid fa-plus"></i></button>
-                    
+                            <!-- ZAKŁADKA Historia zysków -->
+            <div id="profits-list" class="tab-content">
+                <div class="header" style="display: flex; align-items: center; gap: 15px;">
+                    <div style="display: flex">
+                                    <!-- PRZYCISK WSTECZ -->
+                        <button id="btn-back-to-profits" class="btn primary" title="Wróć do zestawienia zysków">
+                        <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <h1>Wprowadzone Zyski</h1>
+                        </div>
+                    </div>
+                <div style="max-height: 50vh; overflow-y: auto; border-radius: 6px; margin-bottom: 40px;">
+                    <table class="data-table" style="margin: 0;">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Data</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Konto (Źródło)</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kategoria</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Zysk brutto</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Podatek</th>
+                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Akcje</th>
+                            </tr>
+                        </thead>
+                        <tbody id="profits-list-tbody"></tbody>
+                    </table>
                 </div>
+                
             </div>
 
-            <div>
-                <p>
-                    Dodaj akcje w celu monitorowania proporcji portfela. Sekcję akcji w <i>Zyski i podatki</i> wypełnij ręcznie uzywajac danych z PIT-8C lub raportu podatkowego brokera.
-                </p>
-            </div>
-            
-            <div style="height: 400px; margin-bottom: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background-color: #1e1e1e; position: relative;">
-                <canvas id="stocksTreemap"></canvas>
+    <!-- ZAKŁADKA OBLIGACJI -->
+            <div id="portfolio-bonds" class="tab-content">
+                <div class="header">
+                    <h1>Portfel Obligacji</h1>
+                    <button id="btn-new-bond" class="btn primary" title="Dodaj obligacje"><i class="fa-solid fa-plus"></i></button>
+                </div>
+
+                <small style="margin-bottom: 20px; display: block; color: rgba(120, 120, 120, 0.8)">Oprócz obligacji z rynku pierwotnego, dodaj tu obligacje skarbowe i korporacyjne kupione na giełdzie. W ich przypadku zyski z kuponów i należny podatek zostaną automatycznie obliczone i dodane do zakładki <i>Zyski i Podatki</i> w dniu wypłaty kuponu.</small>
+                
+                <div style="height: 400px; margin-bottom: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background-color: #1e1e1e; position: relative;">
+                    <canvas id="bondsTreemap"></canvas>
+                </div>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nazwa Aktywa</th>
+                            <th>Typ</th>
+                            <th>Data zakupu</th>
+                            <th>Ilość / Cena</th>
+                            <th>Wartość całkowita</th>
+                            <th>Informacje o Kuponie</th>
+                            <th>Akcje (Zarządzaj)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bonds-tbody"></tbody>
+                </table>
             </div>
 
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Nazwa Aktywa</th>
-                        <th>Typ</th>
-                        <th>Data zakupu</th>
-                        <th>Ilość / Cena</th>
-                        <th>Wartość całkowita</th>
-                        <th>Informacje o Kuponie</th>
-                        <th>Akcje (Zarządzaj)</th>
-                    </tr>
-                </thead>
-                <tbody id="stocks-tbody"></tbody>
-            </table>
-        </div>    
+            <!-- ZAKŁADKA AKCJI -->
+            <div id="portfolio-stocks" class="tab-content">
+                <div class="header">
+                    <h1>Portfel Akcji</h1>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="nav-btn" title="Lista Obserwowanych" data-target="watchlist" style="color: var(--text-color); font-size: 20px; padding-top: 12px"> <i class="fas fa-list"></i></button>
+                        <button id="btn-new-stock" class="btn primary" title="Dodaj akcje do portfela"><i class="fa-solid fa-plus"></i></button>
+                        
+                    </div>
+                </div>
 
-            <!-- ZAKŁADKA DZIENNIK -->
-<!-- ZAKŁADKA DZIENNIK -->
-        <div id="journal" class="tab-content">
-            <div class="header">
-                <h1>Dziennik Transakcji</h1> 
                 <div>
-                    <button id="open-strategy" class="btn primary" title="Strategia Inwestycyjna"><i class="fa-regular fa-circle-question"></i></button>
-                    <button id="btn-new-journal" class="btn primary" title="Dodaj transakcję"><i class="fa-solid fa-pen-to-square"></i></button>
+                    <small style="margin-bottom: 20px; display: block; color: rgba(120, 120, 120, 0.8)">
+                        Dodaj akcje w celu monitorowania proporcji portfela. Sekcję akcji w <i>Zyski i podatki</i> wypełnij ręcznie uzywajac danych z PIT-8C lub raportu podatkowego brokera.
+                    </small>
                 </div>
-            </div>
-            
-            <!-- KONTENER NA LOSOWY CYTAT -->
-            <div style="margin-bottom: 20px; padding: 15px; background-color: rgba(255, 255, 255, 0.03); border-left: 4px solid var(--accent); border-radius: 4px;">
-                <p id="journal-quote" style="margin: 0; font-size: 16px; font-style: italic; color: #d4d4d4; text-align: center; font-weight: 300; line-height: 1.5;"></p>
-            </div>
-
-            <div id="journal-container" class="journal-grid">
-                <!-- Tutaj skrypt wygeneruje wpisy -->
-            </div>
-        </div>
-
-    </div>  
-    
-
-
-    <div id="modal-deposit" class="modal hidden">
-        <div class="modal-box">
-            <h2 id="modal-dep-title">Nowa Wpłata / Wypłata</h2>
-            <input type="hidden" id="dep-id">
-            <div class="form-group">
-                <label>Data</label>
-                <input type="date" id="dep-date">
-            </div>
-            <p>Dla wypłat wpisz ujemną kwotę.</p>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Kwota</label>
-                    <input type="number" id="dep-amount" step="0.01">
+                
+                <div style="height: 400px; margin-bottom: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background-color: #1e1e1e; position: relative;">
+                    <canvas id="stocksTreemap"></canvas>
                 </div>
-                <div class="form-group">
-                    <label>Waluta</label>
-                    <select id="dep-currency">
-                        <option value="PLN">PLN</option>
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
-                    </select>
-                </div>
-            </div>
-            <div class="rate-info" id="dep-rate-info"></div>
 
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nazwa Aktywa</th>
+                            <th>Typ</th>
+                            <th>Data zakupu</th>
+                            <th>Ilość / Cena</th>
+                            <th>Wartość całkowita</th>
+                            <th>Informacje o Kuponie</th>
+                            <th>Akcje (Zarządzaj)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stocks-tbody"></tbody>
+                </table>
+            </div>    
 
-            <div class="form-group">
-                <label>Konto</label>
-                <select id="dep-dest">
-                    <!-- Wygeneruje się dynamicznie z ustawień! -->
-                </select>
-            </div>
-
-            <div class="modal-actions">
-                <button id="btn-cancel-deposit" class="btn secondary">Anuluj</button>
-                <button id="btn-save-deposit" class="btn accent">Zapisz wpłatę</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modal-profit" class="modal hidden">
-                <div class="modal-box">
-                    <h2>Dodaj Zysk</h2>
-                    <div class="form-group">
-                        <label>Data</label>
-                        <input type="date" id="prof-date">
-                    </div>
-                    <div class="form-group">
-                        <label>Komponent (Źródło)</label>
-                        <select id="prof-broker">
-                            <option value="Obligacje skarbowe">Obligacje skarbowe</option>
-                            <option value="Obligacje korporacyjne">Obligacje korporacyjne</option>
-                            <option value="Akcje XTB">Akcje XTB</option>
-                            <option value="Akcje Trading 212">Akcje Trading 212</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Kategoria</label>
-                        <select id="prof-cat">
-                            <option value="dywidendy">Dywidendy</option>
-                            <option value="sprzedaz">Sprzedaż papierów</option>
-                            <option value="odsetki">Odsetki</option>
-                        </select>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Zysk (PLN)</label>
-                            <input type="number" id="prof-amount" step="0.01">
-                        </div>
-                        <div class="form-group">
-                            <label>Pobrany Podatek (PLN)</label>
-                            <input type="number" id="prof-tax" step="0.01">
-                        </div>
-                    </div>
-                    <div class="modal-actions">
-                        <button id="btn-cancel-profit" class="btn secondary">Anuluj</button>
-                        <button id="btn-save-profit" class="btn accent">Zapisz Zysk</button>
+                <!-- ZAKŁADKA DZIENNIK -->
+    <!-- ZAKŁADKA DZIENNIK -->
+            <div id="journal" class="tab-content">
+                <div class="header">
+                    <h1>Dziennik Transakcji</h1> 
+                    <div>
+                        <button id="open-strategy" class="btn primary" title="Strategia Inwestycyjna"><i class="fa-regular fa-circle-question"></i></button>
+                        <button id="btn-new-journal" class="btn primary" title="Dodaj transakcję"><i class="fa-solid fa-pen-to-square"></i></button>
                     </div>
                 </div>
+                
+                <!-- KONTENER NA LOSOWY CYTAT -->
+                <div style="margin-bottom: 20px; padding: 15px; background-color: var(--widget-background); border: 1px solid var(--witget-border); border-radius: 8px;">
+                    <p id="journal-quote" style="margin: 0; font-size: 16px; font-style: italic; color: var(--text-color); text-align: center; font-weight: 300; line-height: 1.5;"></p>
+                </div>
+
+                <div id="journal-container" class="journal-grid">
+                    <!-- Tutaj skrypt wygeneruje wpisy -->
+                </div>
             </div>
 
-    <div id="modal-asset" class="modal hidden">
-        <div class="modal-box" style="width: 500px;">
-            <h2>Nowa Pozycja w Portfelu</h2>
-            <div class="form-row">
+        </div>  
+        
+
+
+        <div id="modal-deposit" class="modal hidden">
+            <div class="modal-box">
+                <h2 id="modal-dep-title">Nowa Wpłata / Wypłata</h2>
+                <input type="hidden" id="dep-id">
                 <div class="form-group">
-                    <label>Typ</label>
-                    <select id="asset-type">
-                        <option value="Akcje">Akcje</option>
-                        <option value="Obligacje skarbowe">Obligacje skarbowe</option>
-                        <option value="Obligacje korporacyjne">Obligacje korporacyjne</option>
-                    </select>
+                    <label>Data</label>
+                    <input type="date" id="dep-date">
                 </div>
-                <div class="form-group">
-                    <label>Data zakupu</label>
-                    <input type="date" id="asset-date">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Nazwa (np. Microsoft (USA), KruK)</label>
-                <input type="text" id="asset-name">
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Cena za jednostkę</label>
-                    <input type="number" id="asset-price" step="0.01">
-                </div>
-                <div class="form-group">
-                    <label>Ilość</label>
-                    <input type="number" id="asset-quantity" step="0.0001">
-                </div>
-            </div>
-            
-            <div id="asset-coupon-fields" style="display: none; background: #2a2d2e; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
-                <h4 style="margin-top: 0; margin-bottom: 10px; color: #fff;">Dane Kuponu</h4>
+                <small style="margin-bottom: 20px; display: block; color: rgba(120, 120, 120, 0.8)">Dla wypłat wpisz ujemną kwotę.</small>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Data wypłaty</label>
-                        <input type="date" id="asset-coupon-date">
+                        <label>Kwota</label>
+                        <input type="number" id="dep-amount" step="0.01">
                     </div>
                     <div class="form-group">
-                        <label>Wysokość kuponu (%)</label>
-                        <input type="number" id="asset-coupon-rate" step="0.01">
-                    </div>
-                    <div class="form-group">
-                        <label>Częstość</label>
-                        <select id="asset-coupon-freq">
-                            <option value="Roczna">Roczna</option>
-                            <option value="Półroczna">Półroczna</option>
+                        <label>Waluta</label>
+                        <select id="dep-currency">
+                            <option value="PLN">PLN</option>
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
                         </select>
                     </div>
                 </div>
-            </div>
+                <div class="rate-info" id="dep-rate-info"></div>
 
-            <div class="modal-actions">
-                <button id="btn-cancel-asset" class="btn secondary">Anuluj</button>
-                <button id="btn-save-asset" class="btn accent">Dodaj do portfela</button>
-            </div>
-        </div>
-    </div>
-        <!-- MODAL DZIENNIKA ZAGRAŃ -->
-    <div id="modal-journal" class="modal hidden">
-        <div class="modal-box" style="width: 600px; max-height: 90vh; overflow-y: auto;">
-            <h2>Zapisz Transakcję</h2>
-            <input type="hidden" id="journal-id">
-            <input type="hidden" id="journal-existing-image">
-            <div class="form-group">
-                <label>Data transakcji (zamknięcia)</label>
-                <input type="date" id="journal-date">
-            </div>
-            <div class="form-group">
-                <label>Dlaczego kupiłem?</label>
-                <textarea id="journal-buy-reason" rows="2" placeholder="np. obrona układu overbalance, potwierdzenie z wolumenem..."></textarea>
-            </div>
-            <div class="form-row">
+
                 <div class="form-group">
-                    <label>Dlaczego sprzedałem?</label>
-                    <select id="journal-sell-reason">
-                        <option value="Ręcznie">Ręcznie</option>
-                        <option value="Take Profit">Take Profit</option>
-                        <option value="Stop Loss">Stop Loss</option>
+                    <label>Konto</label>
+                    <select id="dep-dest">
+                        <!-- Wygeneruje się dynamicznie z ustawień! -->
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>% Zysk / Strata</label>
-                    <input type="number" id="journal-profit" step="0.01">
+
+                <div class="modal-actions">
+                    <button id="btn-cancel-deposit" class="btn secondary">Anuluj</button>
+                    <button id="btn-save-deposit" class="btn accent">Zapisz wpłatę</button>
                 </div>
             </div>
-            <div class="form-row">
+        </div>
+
+
+        <div id="modal-profit" class="modal hidden">
+            <div class="modal-box">
+                <h2>Zysk i Podatek</h2>
+                <!-- Ukryte ID potrzebne do edycji -->
+                <input type="hidden" id="prof-id"> 
+                
                 <div class="form-group">
-                    <label>Czy zamknąłem zgodnie z planem?</label>
-                    <select id="journal-closed-plan">
-                        <option value="Tak">Tak</option>
-                        <option value="Nie">Nie</option>
+                    <label>Data</label>
+                    <input type="date" id="prof-date">
+                </div>
+
+                <div class="form-group">
+                <label>Konto</label>
+                <div style="display: flex; gap: 10px;">
+                    <select id="prof-broker" style="flex: 1;">
+                        <!-- Opcje generowane dynamicznie -->
                     </select>
-                </div>
-                <div class="form-group">
-                    <label>Czy wszystko zgodnie ze strategią?</label>
-                    <select id="journal-strategy">
-                        <option value="Tak">Tak</option>
-                        <option value="Nie">Nie</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Moja ocena zgrania</label>
-                    <select id="journal-rating">
-                        <option value="5">5 - Perfekcyjnie</option>
-                        <option value="4">4 - Dobrze</option>
-                        <option value="3">3 - Przeciętnie</option>
-                        <option value="2">2 - Słabo</option>
-                        <option value="1">1 - Fatalnie</option>
-                    </select>
+                    
+                    <!-- Magiczny przycisk (z twardym display: none) -->
                 </div>
             </div>
+
+
+            <div id="pko-info" style="display: none; padding: 12px; margin-top: 15px; margin-bottom: 15px; background: rgba(33, 150, 243, 0.1); border: 1px solid #2196F3; border-radius: 6px; color: #42A5F5; font-size: 13px; line-height: 1.4;">
+                <i class="fa-solid fa-circle-info" style="margin-right: 6px;"></i>Aby automatycznie dodać zysk z całego roku dla polskich obligacji skarbowych, możesz zaimportować plik CSV. Zaloguj się do serwisu transakcyjnego obligacji, wybierz <i>Historia Dyspozycji</i> i w zakresie historii wybierz dany rok rozliczeniowy. Następnie (na dole strony) kliknij <i>Eksport do arkusza MS Excel</i>. Otwórz pobrany plik w Excel lub Numbers i eksportuj jako CSV.
+            </div>
+
+            <input type="file" id="pko-import-file" accept=".csv,.xls,.xlsx" style="display: none;">
+            <button id="btn-pko-import" class="btn secondary" title="Importuj odsetki" style="white-space: nowrap; display: none; min-width: 150px; margin-bottom: 15px;">Wybierz plik CSV</button>
+
+
             <div class="form-group">
-                <label>Co mogłem zrobić lepiej?</label>
-                <textarea id="journal-improvement" rows="2" placeholder="np. za wczesne wejście, za ciasny stop loss..."></textarea>
-            </div>
-            <div class="form-group">
-                <label>Zdjęcie / Zrzut ekranu analizy (Opcjonalnie)</label>
-                <input type="file" id="journal-image" accept="image/*">
-            </div>
-            <div class="modal-actions">
-                <button id="btn-cancel-journal" class="btn secondary">Anuluj</button>
-                <button id="btn-save-journal" class="btn accent">Zapisz Wpis</button>
-            </div>
-        </div>
-    </div>
-
-
-    <div class="bottom-bar">
-            <nav>
-                <button class="nav-btn active" data-target="dashboard">
-                    <i class="fas fa-chart-pie"></i>
-                    <span>Podsumowanie</span>
-                </button>
-                <button class="nav-btn" data-target="history">
-                    <i class="fas fa-history"></i>
-                    <span>Historia Wpłat</span>
-                </button>
-                <button class="nav-btn" data-target="taxes">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    <span>Zyski i Podatki</span>
-                </button>
-                <button class="nav-btn" data-target="portfolio-bonds">
-                    <i class="fa-solid fa-landmark"></i>
-                    <span>Obligacje</span>
-                </button>
-                <button class="nav-btn" data-target="portfolio-stocks">
-                    <i class="fas fa-chart-line"></i>
-                    <span>Akcje</span>
-                </button>
-                <button class="nav-btn" data-target="journal">
-                    <i class="fas fa-book-open"></i>
-                    <span>Dziennik</span>
-                </button>                  
-
-            </nav>
-        </div>  
-
-<!-- NOWE OKIENKO DO EDYCJI ILOŚCI -->
-    <div id="modal-edit-qty" class="modal hidden">
-        <div class="modal-box">
-            <h2>Edytuj Ilość</h2>
-            <input type="hidden" id="edit-qty-id">
-            <div class="form-group">
-                <label>Nowa ilość (pozostała po sprzedaży/dokupieniu)</label>
-                <input type="number" id="edit-qty-val" step="0.0001">
-            </div>
-            <div class="modal-actions">
-                <button id="btn-cancel-qty" class="btn secondary">Anuluj</button>
-                <button id="btn-save-qty" class="btn accent">Zapisz</button>
-            </div>
-        </div>
-    </div>
-
-<!-- MODAL PODGLĄDU ZDJĘCIA -->
-    <div id="modal-image-preview" class="modal hidden" style="z-index: 2000;">
-        <div style="position: relative; max-width: 95vw; max-height: 95vh; display: flex; justify-content: center; align-items: center;">
-            <img id="preview-img" src="" style="max-width: 100%; max-height: 90vh; border-radius: 8px; box-shadow: 0 4px 25px rgba(0,0,0,0.8); object-fit: contain;">
-            <button id="btn-close-preview" class="btn" style="position: absolute; top: -15px; right: -15px; background-color: #F44336; border-radius: 50%; width: 35px; height: 35px; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 16px; padding: 0;">&times;</button>
-        </div>
-    </div>
-
-
-    <!-- Modal: Dodaj pojedynczy ticker -->
-    <div id="modal-ticker" class="modal hidden">
-        <div class="modal-box">
-            <h2>Dodaj Spółkę</h2>
-            <div class="form-group">
-                <label>Ticker (np. AAPL, MSFT, CDR.WA)</label>
-                <input type="text" id="ticker-input" style="text-transform: uppercase;">
-            </div>
-            <div class="modal-actions">
-                <button id="btn-cancel-ticker" class="btn secondary">Anuluj</button>
-                <button id="btn-save-ticker" class="btn accent">Dodaj</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: Valuation Measures (Fundamentalne) -->
-    <div id="modal-valuation" class="modal hidden" style="z-index: 2500;">
-        <div class="modal-box" style="width: 500px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; text-transform: none; letter-spacing: normal;">
-            <h2 id="val-title" style="margin-bottom: 20px; font-family: inherit; text-transform: none;">Miary Wyceny</h2>
-            <table style="width: 100%; border-collapse: collapse; text-align: right; font-size: 14px; font-family: inherit; text-transform: none;">
-                <thead>
-                    <tr style="border-bottom: 1px solid var(--border);">
-                        <th style="text-align: left; padding: 10px; text-transform: none; font-weight: bold;">Wskaźnik</th>
-                        <th style="padding: 10px; text-transform: none; font-weight: bold;">Current</th>
-                    </tr>
-                </thead>
-                <tbody id="val-tbody" style="font-family: inherit; text-transform: none;">
-                    <!-- Dynamiczne dane -->
-                </tbody>
-            </table>
-            <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: space-between;">
-                <button id="btn-open-yahoo" class="btn" style="background-color: #430297; color: white; border: none; font-family: inherit; cursor: pointer;">
-                    Otwórz w Yahoo&nbsp;<i class="fa-solid fa-arrow-up-right-from-square" style="color: rgb(255, 255, 255);"></i>
-                </button>
-                <button id="btn-close-valuation" class="btn primary" style="font-family: inherit;">Zamknij</button>
-            </div>
-        </div>
-    </div>
-
-
-<!-- MODAL USTAWIEŃ -->
-    <div id="modal-settings" class="modal hidden" style="z-index: 3000;">
-        <div class="modal-box" style="width: 500px; position: relative;">
-            <!-- Przycisk X do zamykania (Auto-Zapis) -->
-            <button id="btn-close-settings" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
-            
-            <h2 style="margin-top: 0;">Profil</h2>
-            
-            <div class="form-group">
-                <label style="margin-bottom: 15px">Styl inwestowania</label>
-                <!-- Wartości to procenty, co ułatwi obliczenia w JS -->
-                <select id="setting-portfolio-type">
-                    <option value="20">Konserwatywny: 80/20 (max 20% akcji)</option>
-                    <option value="40">Umiarkowany: 60/40 (max 40% akcji)</option>
-                    <option value="50">Zrównoważony: 50/50 (max 50% akcji)</option>
-                    <option value="70">Agresywny: 30/70 (max 70% akcji)</option>
-                    <option value="90">Spekulacyjny: 10/90 (max 90% akcji)</option>
+                <label>Kategoria</label>
+                <select id="prof-cat">
+                    <option value="dywidendy">Dywidendy</option>
+                    <option value="sprzedaz">Sprzedaż papierów</option>
+                    <option value="odsetki">Odsetki</option>
+                    <!-- Dodana kategoria kupony -->
+                    <option value="Kupony">Kupony</option> 
                 </select>
             </div>
+            <div id="prof-warning" style="display: none; padding: 10px; margin-top: 15px; margin-bottom: 15px; background: rgba(255, 152, 0, 0.1); border: 1px solid #ff9800; border-radius: 4px; color: #ff9800; font-size: 13px;"></div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Zysk (PLN)</label>
+                    <input type="number" id="prof-amount" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Pobrany Podatek (PLN)</label>
+                    <!-- Kluczowa zmiana: type="text" -->
+                    <input type="text" id="prof-tax" placeholder="np. 15.50 lub 'pobrany'">
+                </div>
+            </div>
 
 
-            <div class="form-group" style="margin-top: 25px;">
                 
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <label>Konta w Biurach Maklerskich</label>
-                    <button id="btn-open-add-broker" class="btn primary"><i class="fa-solid fa-plus"></i></button>
-                </div>
-                <div id="setting-brokers-list" style="background: #1e1e1e; padding: 10px; border-radius: 6px; border: 1px solid var(--border); max-height: 150px; overflow-y: auto;">
-                    <!-- JS wygeneruje tu dynamiczną listę -->
+
+                <div class="modal-actions">
+                    <button id="btn-cancel-profit" class="btn secondary">Anuluj</button>
+                    <button id="btn-save-profit" class="btn accent">Zapisz Zysk</button>
                 </div>
             </div>
         </div>
-    </div>
 
-<!-- MODAL STRATEGII -->
-    <div id="modal-strategy" class="modal hidden" style="z-index: 3000;">
-        <div class="modal-box" style="width: 700px; height: 600px; position: relative;">
-            <button id="btn-close-strategy" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
-            <h2 style="margin-top: 0;">Strategia Inwestycyjna</h2>
+        <div id="modal-asset" class="modal hidden">
+            <div class="modal-box" style="width: 500px;">
+                <h2>Nowa Pozycja w Portfelu</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Konto / Broker</label>
+                        <select id="asset-broker">
+                            <!-- Wypełniane dynamicznie -->
+                        </select>
+                    </div>
 
-            <!-- WIDOK ODCZYTU (Z zachowaniem formatowania) -->
-            <div id="strategy-view-mode" style="background-color: rgba(255,255,255,0.03); padding: 20px; border-radius: 6px; border: 1px solid var(--border); min-height: 200px; white-space: pre-wrap; font-family: inherit; line-height: 1.6; max-height: 500px; overflow-y: auto;"></div>
+                    <div class="form-group">
+                        <label>Data zakupu</label>
+                        <input type="date" id="asset-date">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Nazwa (np. Microsoft (USA), KruK)</label>
+                    <input type="text" id="asset-name">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Cena za jednostkę</label>
+                        <input type="number" id="asset-price" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Ilość</label>
+                        <input type="number" id="asset-quantity" step="0.0001">
+                    </div>
+                </div>
+                
+                <div id="asset-coupon-fields" style="display: none; background: #2a2d2e; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                    <h4 style="margin-top: 0; margin-bottom: 10px; color: #fff;">Dane Kuponu</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Data wypłaty</label>
+                            <input type="date" id="asset-coupon-date">
+                        </div>
+                        <div class="form-group">
+                            <label>Wysokość kuponu (%)</label>
+                            <input type="number" id="asset-coupon-rate" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label>Częstość</label>
+                            <select id="asset-coupon-freq">
+                                <option value="Roczna">Roczna</option>
+                                <option value="Półroczna">Półroczna</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
 
-            <!-- WIDOK EDYCJI (Ukryty domyślnie) -->
-            <div id="strategy-edit-mode" class="hidden">
-                <textarea id="strategy-textarea" rows="15" style="width: 100%; box-sizing: border-box; padding: 15px; background-color: #1e1e1e; color: #fff; border: 1px solid var(--accent); border-radius: 6px; font-family: inherit; resize: vertical; line-height: 1.5;" placeholder="Wpisz lub wklej zasady swojej strategii...&#10;np.&#10;1. Zawsze chroń kapitał.&#10;2. Używaj stop lossów."></textarea>
-            </div>
-
-            <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end;">
-                <button id="btn-edit-strategy" class="btn secondary">Edytuj</button>
-                <button id="btn-cancel-strategy" class="btn secondary hidden">Anuluj</button>
-                <button id="btn-save-strategy" class="btn accent hidden">Zapisz Zmiany</button>
+                <div class="modal-actions">
+                    <button id="btn-cancel-asset" class="btn secondary">Anuluj</button>
+                    <button id="btn-save-asset" class="btn accent">Dodaj do portfela</button>
+                </div>
             </div>
         </div>
-    </div>
-
-
-    <!-- NOWE OKIENKO DODAWANIA BROKERA/KONTA -->
-    <div id="modal-add-broker" class="modal hidden" style="z-index: 3500;">
-        <div class="modal-box" style="width: 400px;">
-            <h2>Dodaj Konto / Brokera</h2>
-            <div class="form-group">
-                <label>Nazwa (np. XTB, mBank, Portfel Krypto)</label>
-                <input type="text" id="setting-new-broker-name">
-            </div>
-            <div class="form-group">
-                <label>Główny typ aktywów</label>
-                <select id="setting-new-broker-type">
-                    <option value="Akcje">Akcje</option>
-                    <option value="Obligacje skarbowe krajowe">Obligacje skarbowe krajowe</option>
-                    <option value="Obligacje korporacyjne i zagraniczne">Obligacje korporacyjne i zagr.</option>
-                    <option value="Konta oszczędnościowe">Konta oszczędnościowe</option>
-                    <option value="Kryptowaluty">Kryptowaluty</option>
-                    <option value="Metale szlachetne">Metale szlachetne</option>
-                    <option value="Inne">Inne</option>
-                </select>
-            </div>
-            <div class="modal-actions">
-                <button id="btn-cancel-add-broker" class="btn secondary">Anuluj</button>
-                <button id="btn-confirm-add-broker" class="btn accent">Dodaj do listy</button>
+            <!-- MODAL DZIENNIKA ZAGRAŃ -->
+        <div id="modal-journal" class="modal hidden">
+            <div class="modal-box" style="width: 600px; max-height: 90vh; overflow-y: auto;">
+                <h2>Zapisz Transakcję</h2>
+                <input type="hidden" id="journal-id">
+                <input type="hidden" id="journal-existing-image">
+                <div class="form-group">
+                    <label>Data transakcji (zamknięcia)</label>
+                    <input type="date" id="journal-date">
+                </div>
+                <div class="form-group">
+                    <label>Dlaczego kupiłem?</label>
+                    <textarea id="journal-buy-reason" rows="2" placeholder="np. obrona układu overbalance, potwierdzenie z wolumenem..."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Dlaczego sprzedałem?</label>
+                        <select id="journal-sell-reason">
+                            <option value="Ręcznie">Ręcznie</option>
+                            <option value="Take Profit">Take Profit</option>
+                            <option value="Stop Loss">Stop Loss</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>% Zysk / Strata</label>
+                        <input type="number" id="journal-profit" step="0.01">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Czy zamknąłem zgodnie z planem?</label>
+                        <select id="journal-closed-plan">
+                            <option value="Tak">Tak</option>
+                            <option value="Nie">Nie</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Czy wszystko zgodnie ze strategią?</label>
+                        <select id="journal-strategy">
+                            <option value="Tak">Tak</option>
+                            <option value="Nie">Nie</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Moja ocena zgrania</label>
+                        <select id="journal-rating">
+                            <option value="5">5 - Perfekcyjnie</option>
+                            <option value="4">4 - Dobrze</option>
+                            <option value="3">3 - Przeciętnie</option>
+                            <option value="2">2 - Słabo</option>
+                            <option value="1">1 - Fatalnie</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Co mogłem zrobić lepiej?</label>
+                    <textarea id="journal-improvement" rows="2" placeholder="np. za wczesne wejście, za ciasny stop loss..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Zdjęcie / Zrzut ekranu analizy (Opcjonalnie)</label>
+                    <input type="file" id="journal-image" accept="image/*">
+                </div>
+                <div class="modal-actions">
+                    <button id="btn-cancel-journal" class="btn secondary">Anuluj</button>
+                    <button id="btn-save-journal" class="btn accent">Zapisz Wpis</button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- MODAL TRANSFERU MIĘDZY KONTAMI -->
-    <div id="modal-transfer" class="modal hidden" style="z-index: 3200;">
-        <div class="modal-box">
-            <h2>Transfer między kontami</h2>
-            <div class="form-group">
-                <label>Data</label>
-                <input type="date" id="transfer-date">
+
+        <div class="bottom-bar">
+                <nav>
+                    <button class="nav-btn active" data-target="dashboard">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>Podsumowanie</span>
+                    </button>
+                    <button class="nav-btn" data-target="history">
+                        <i class="fas fa-history"></i>
+                        <span>Historia Wpłat</span>
+                    </button>
+                    <button class="nav-btn" data-target="taxes">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        <span>Zyski i Podatki</span>
+                    </button>
+                    <button class="nav-btn" data-target="portfolio-bonds">
+                        <i class="fa-solid fa-landmark"></i>
+                        <span>Obligacje</span>
+                    </button>
+                    <button class="nav-btn" data-target="portfolio-stocks">
+                        <i class="fas fa-chart-line"></i>
+                        <span>Akcje</span>
+                    </button>
+                    <button class="nav-btn" data-target="journal">
+                        <i class="fas fa-book-open"></i>
+                        <span>Dziennik</span>
+                    </button>                  
+
+                </nav>
+            </div>  
+
+    <!-- NOWE OKIENKO DO EDYCJI ILOŚCI -->
+        <div id="modal-edit-qty" class="modal hidden">
+            <div class="modal-box">
+                <h2>Edytuj Ilość</h2>
+                <input type="hidden" id="edit-qty-id">
+                <div class="form-group">
+                    <label>Nowa ilość (pozostała po sprzedaży/dokupieniu)</label>
+                    <input type="number" id="edit-qty-val" step="0.0001">
+                </div>
+                <div class="modal-actions">
+                    <button id="btn-cancel-qty" class="btn secondary">Anuluj</button>
+                    <button id="btn-save-qty" class="btn accent">Zapisz</button>
+                </div>
             </div>
-            <div class="form-row">
+        </div>
+
+    <!-- MODAL PODGLĄDU ZDJĘCIA -->
+        <div id="modal-image-preview" class="modal hidden" style="z-index: 2000;">
+            <div style="position: relative; max-width: 95vw; max-height: 95vh; display: flex; justify-content: center; align-items: center;">
+                <img id="preview-img" src="" style="max-width: 100%; max-height: 90vh; border-radius: 8px; box-shadow: 0 4px 25px rgba(0,0,0,0.8); object-fit: contain;">
+                <button id="btn-close-preview" class="btn" style="position: absolute; top: -15px; right: -15px; background-color: #F44336; border-radius: 50%; width: 35px; height: 35px; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 16px; padding: 0;">&times;</button>
+            </div>
+        </div>
+
+
+        <!-- Modal: Dodaj pojedynczy ticker -->
+        <div id="modal-ticker" class="modal hidden">
+            <div class="modal-box">
+                <h2>Dodaj Spółkę</h2>
                 <div class="form-group">
-                    <label>Z konta (Zabierz)</label>
-                    <select id="transfer-from"></select>
+                    <label>Ticker (np. AAPL, MSFT, CDR.WA)</label>
+                    <input type="text" id="ticker-input" style="text-transform: uppercase;">
                 </div>
-                <div class="form-group">
-                    <label>Na konto (Dodaj)</label>
-                    <select id="transfer-to"></select>
+                <div class="modal-actions">
+                    <button id="btn-cancel-ticker" class="btn secondary">Anuluj</button>
+                    <button id="btn-save-ticker" class="btn accent">Dodaj</button>
                 </div>
             </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Kwota transferu</label>
-                    <input type="number" id="transfer-amount" step="0.01">
+        </div>
+
+        <!-- Modal: Valuation Measures (Fundamentalne) -->
+        <div id="modal-valuation" class="modal hidden" style="z-index: 2500;">
+            <div class="modal-box" style="width: 500px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; text-transform: none; letter-spacing: normal;">
+                <h2 id="val-title" style="margin-bottom: 20px; font-family: inherit; text-transform: none;">Miary Wyceny</h2>
+                <table style="width: 100%; border-collapse: collapse; text-align: right; font-size: 14px; font-family: inherit; text-transform: none;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <th style="text-align: left; padding: 10px; text-transform: none; font-weight: bold;">Wskaźnik</th>
+                            <th style="padding: 10px; text-transform: none; font-weight: bold;">Current</th>
+                        </tr>
+                    </thead>
+                    <tbody id="val-tbody" style="font-family: inherit; text-transform: none;">
+                        <!-- Dynamiczne dane -->
+                    </tbody>
+                </table>
+                <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: space-between;">
+                    <button id="btn-open-yahoo" class="btn" style="background-color: #430297; color: white; border: none; font-family: inherit; cursor: pointer;">
+                        Otwórz w Yahoo&nbsp;<i class="fa-solid fa-arrow-up-right-from-square" style="color: rgb(255, 255, 255);"></i>
+                    </button>
+                    <button id="btn-close-valuation" class="btn primary" style="font-family: inherit;">Zamknij</button>
                 </div>
-                <div class="form-group">
-                    <label>Waluta</label>
-                    <select id="transfer-currency">
-                        <option value="PLN">PLN</option>
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
+            </div>
+        </div>
+
+
+    <!-- MODAL USTAWIEŃ -->
+        <div id="modal-settings" class="modal hidden" style="z-index: 3000;">
+            <div class="modal-box" style="width: 500px; position: relative;">
+                <!-- Przycisk X do zamykania (Auto-Zapis) -->
+                <button id="btn-close-settings" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
+                
+                <h2 style="margin-top: 0;">Profil</h2>
+
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label>Motyw aplikacji</label>
+                    <select id="setting-theme">
+                        <option value="system">Systemowy (Domyślny)</option>
+                        <option value="dark">Ciemny</option>
+                        <option value="light">Jasny</option>
                     </select>
                 </div>
-            </div>
-            <div class="rate-info" id="transfer-rate-info" style="color: #aaa; font-size: 12px; margin-bottom: 15px;"></div>
-            <div class="modal-actions">
-                <button id="btn-cancel-transfer" class="btn secondary">Anuluj</button>
-                <button id="btn-save-transfer" class="btn accent">Wykonaj transfer</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL IMPORT/EKSPORT CSV -->
-    <div id="modal-csv" class="modal hidden" style="z-index: 3400;">
-        <div class="modal-box" style="width: 550px; position: relative;">
-            <button id="btn-close-csv" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
-            <h2 style="margin-top: 0;">Importuj / eksportuj historię</h2>
-            
-            <div style="margin-bottom: 20px;">
-                <p style="font-size: 13px; color: #aaa; margin-bottom: 10px;">Obsługiwany format pliku to <strong>CSV (rozdzielany przecinkami)</strong>. Wymagane są dokładnie 4 kolumny w stałej kolejności (nagłówki są ignorowane):</p>
-                <ol style="font-size: 13px; color: #ddd; margin-bottom: 0; padding-left: 20px;">
-                    <li><strong>Data:</strong> format RRRR-MM-DD (np. 2024-05-12)</li>
-                    <li><strong>Kwota:</strong> sama wartość (np. 1500 lub 1500,50)</li>
-                    <li><strong>Waluta:</strong> PLN, USD lub EUR</li>
-                    <li><strong>Konto:</strong> dokładna nazwa (np. XTB, BM PKO)</li>
-                </ol>
-            </div>
-
-            <div style="display: flex; gap: 15px; justify-content: space-between;">
-                <!-- SEKCJA EKSPORTU -->
-                <div style="flex: 1; padding: 20px; background-color: #1e1e1e; border: 1px solid var(--border); border-radius: 6px; text-align: center;">
-                    <i class="fa-solid fa-file-export" style="font-size: 24px; color: var(--accent); margin-bottom: 10px; display: block;"></i>
-                    <h4 style="margin: 0 0 10px 0;">Eksportuj historię</h4>
-                    <p style="font-size: 12px; color: #888; margin-bottom: 20px; min-height: 35px;">Zapisz obecną historię wpłat w formie pliku CSV - do odczytu w Excel lub Numbers.</p>
-                    <button id="btn-export-csv" class="btn secondary" style="width: 100%;">Eksportuj Plik</button>
-                </div>
                 
-                <!-- SEKCJA IMPORTU -->
-                <div style="flex: 1; padding: 20px; background-color: #1e1e1e; border: 1px solid var(--border); border-radius: 6px; text-align: center;">
-                    <i class="fa-solid fa-file-import" style="font-size: 24px; color: #4CAF50; margin-bottom: 10px; display: block;"></i>
-                    <h4 style="margin: 0 0 10px 0;">Importuj transakcje</h4>
-                    <p style="font-size: 12px; color: #888; margin-bottom: 20px; min-height: 35px;">Dodaj historię wpłat z pliku CSV wyeksportowanego z Excel lub Numbers.</p>
-                    <input type="file" id="csv-import-file" accept=".csv" style="display: none;">
-                    <button id="btn-trigger-import-csv" class="btn secondary" style="width: 100%;">Wybierz plik CSV</button>
+                <div class="form-group">
+                    <label style="margin-bottom: 15px">Styl inwestowania</label>
+                    <!-- Wartości to procenty, co ułatwi obliczenia w JS -->
+                    <select id="setting-portfolio-type">
+                        <option value="20">Konserwatywny: 80/20 (max 20% akcji)</option>
+                        <option value="40">Umiarkowany: 60/40 (max 40% akcji)</option>
+                        <option value="50">Zrównoważony: 50/50 (max 50% akcji)</option>
+                        <option value="70">Agresywny: 30/70 (max 70% akcji)</option>
+                        <option value="90">Spekulacyjny: 10/90 (max 90% akcji)</option>
+                    </select>
+                </div>
+
+
+                <div class="form-group" style="margin-top: 25px;">
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>Konta w Biurach Maklerskich</label>
+                        <button id="btn-open-add-broker" class="btn primary"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <div id="setting-brokers-list" style="background-color: var(--input-bg); padding: 10px; border-radius: 6px; border: 1px solid var(--btn-border); max-height: 150px; overflow-y: auto;">
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+
+    <!-- MODAL STRATEGII -->
+        <div id="modal-strategy" class="modal hidden" style="z-index: 3000;">
+            <div class="modal-box" style="width: 700px; height: 600px; position: relative;">
+                <button id="btn-close-strategy" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
+                <h2 style="margin-top: 0;">Strategia Inwestycyjna</h2>
+
+                <!-- WIDOK ODCZYTU (Z zachowaniem formatowania) -->
+                <div id="strategy-view-mode" style="background-color: rgba(255,255,255,0.03); padding: 20px; border-radius: 6px; border: 1px solid var(--border); min-height: 200px; white-space: pre-wrap; font-family: inherit; line-height: 1.6; max-height: 500px; overflow-y: auto;"></div>
+
+                <!-- WIDOK EDYCJI (Ukryty domyślnie) -->
+                <div id="strategy-edit-mode" class="hidden">
+                    <textarea id="strategy-textarea" rows="15" style="width: 100%; box-sizing: border-box; padding: 15px; background-color: #1e1e1e; color: #fff; border: 1px solid var(--accent); border-radius: 6px; font-family: inherit; resize: vertical; line-height: 1.5;" placeholder="Wpisz lub wklej zasady swojej strategii...&#10;np.&#10;1. Zawsze chroń kapitał.&#10;2. Używaj stop lossów."></textarea>
+                </div>
+
+                <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                    <button id="btn-edit-strategy" class="btn secondary">Edytuj</button>
+                    <button id="btn-cancel-strategy" class="btn secondary hidden">Anuluj</button>
+                    <button id="btn-save-strategy" class="btn accent hidden">Zapisz Zmiany</button>
+                </div>
+            </div>
+        </div>
 
 
-    <script src="../dist/renderer.js"></script>
-</body>
-</html>
+        <!-- NOWE OKIENKO DODAWANIA BROKERA/KONTA -->
+        <div id="modal-add-broker" class="modal hidden" style="z-index: 3500;">
+            <div class="modal-box" style="width: 400px;">
+                <h2>Dodaj Konto / Brokera</h2>
+                <div class="form-group">
+                    <label>Nazwa (np. XTB, mBank, Portfel Krypto)</label>
+                    <input type="text" id="setting-new-broker-name">
+                </div>
+                <div class="form-group">
+                    <label>Główny typ aktywów</label>
+                    <select id="setting-new-broker-type">
+                        <option value="Akcje">Akcje</option>
+                        <option value="Obligacje skarbowe krajowe">Obligacje skarbowe krajowe</option>
+                        <option value="Obligacje korporacyjne i zagraniczne">Obligacje korporacyjne i zagr.</option>
+                        <option value="Konta oszczędnościowe">Konta oszczędnościowe</option>
+                        <option value="Kryptowaluty">Kryptowaluty</option>
+                        <option value="Metale szlachetne">Metale szlachetne</option>
+                        <option value="Inne">Inne</option>
+                    </select>
+                </div>
+                <div class="modal-actions">
+                    <button id="btn-cancel-add-broker" class="btn secondary">Anuluj</button>
+                    <button id="btn-confirm-add-broker" class="btn accent">Dodaj do listy</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL TRANSFERU MIĘDZY KONTAMI -->
+        <div id="modal-transfer" class="modal hidden" style="z-index: 3200;">
+            <div class="modal-box">
+                <h2>Transfer między kontami</h2>
+                <div class="form-group">
+                    <label>Data</label>
+                    <input type="date" id="transfer-date">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Z konta (Zabierz)</label>
+                        <select id="transfer-from"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Na konto (Dodaj)</label>
+                        <select id="transfer-to"></select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Kwota transferu</label>
+                        <input type="number" id="transfer-amount" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label>Waluta</label>
+                        <select id="transfer-currency">
+                            <option value="PLN">PLN</option>
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rate-info" id="transfer-rate-info" style="color: #aaa; font-size: 12px; margin-bottom: 15px;"></div>
+                <div class="modal-actions">
+                    <button id="btn-cancel-transfer" class="btn secondary">Anuluj</button>
+                    <button id="btn-save-transfer" class="btn accent">Wykonaj transfer</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL IMPORT/EKSPORT CSV -->
+        <div id="modal-csv" class="modal hidden" style="z-index: 3400;">
+            <div class="modal-box" style="width: 550px; position: relative;">
+                <button id="btn-close-csv" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
+                <h2 style="margin-top: 0;">Importuj / eksportuj historię</h2>
+                
+                <div style="margin-bottom: 20px;">
+                    <p style="font-size: 13px; color: #aaa; margin-bottom: 10px;">Obsługiwany format pliku to <strong>CSV (rozdzielany przecinkami)</strong>. Wymagane są dokładnie 4 kolumny w stałej kolejności (nagłówki są ignorowane):</p>
+                    <ol style="font-size: 13px; color: #ddd; margin-bottom: 0; padding-left: 20px;">
+                        <li><strong>Data:</strong> format RRRR-MM-DD (np. 2024-05-12)</li>
+                        <li><strong>Kwota:</strong> sama wartość (np. 1500 lub 1500,50)</li>
+                        <li><strong>Waluta:</strong> PLN, USD lub EUR</li>
+                        <li><strong>Konto:</strong> dokładna nazwa (np. XTB, BM PKO)</li>
+                    </ol>
+                </div>
+
+                <div style="display: flex; gap: 15px; justify-content: space-between;">
+                    <!-- SEKCJA EKSPORTU -->
+                    <div style="flex: 1; padding: 20px; background-color: #1e1e1e; border: 1px solid var(--border); border-radius: 6px; text-align: center;">
+                        <i class="fa-solid fa-file-export" style="font-size: 24px; color: var(--accent); margin-bottom: 10px; display: block;"></i>
+                        <h4 style="margin: 0 0 10px 0;">Eksportuj historię</h4>
+                        <p style="font-size: 12px; color: #888; margin-bottom: 20px; min-height: 35px;">Zapisz obecną historię wpłat w formie pliku CSV - do odczytu w Excel lub Numbers.</p>
+                        <button id="btn-export-csv" class="btn secondary" style="width: 100%;">Eksportuj Plik</button>
+                    </div>
+                    
+                    <!-- SEKCJA IMPORTU -->
+                    <div style="flex: 1; padding: 20px; background-color: #1e1e1e; border: 1px solid var(--border); border-radius: 6px; text-align: center;">
+                        <i class="fa-solid fa-file-import" style="font-size: 24px; color: #4CAF50; margin-bottom: 10px; display: block;"></i>
+                        <h4 style="margin: 0 0 10px 0;">Importuj transakcje</h4>
+                        <p style="font-size: 12px; color: #888; margin-bottom: 20px; min-height: 35px;">Dodaj historię wpłat z pliku CSV wyeksportowanego z Excel lub Numbers.</p>
+                        <input type="file" id="csv-import-file" accept=".csv" style="display: none;">
+                        <button id="btn-trigger-import-csv" class="btn secondary" style="width: 100%;">Wybierz plik CSV</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <script src="../dist/renderer.js"></script>
+    </body>
+    </html>

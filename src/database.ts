@@ -214,3 +214,27 @@ export const updateDeposit = (id: number, deposit: any) => {
         );
     });
 };
+
+export const deleteProfit = (id: number): Promise<void> => {
+    return new Promise((resolve, reject) => {
+        db.run('DELETE FROM profits WHERE id = ?', [id], function(err) {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+};
+
+export const updateProfit = (id: number, profit: any): Promise<void> => {
+    return new Promise((resolve, reject) => {
+        db.run(
+            `UPDATE profits 
+             SET date = ?, broker = ?, category = ?, amount = ?, tax = ? 
+             WHERE id = ?`,
+            [profit.date, profit.broker, profit.category, profit.amount, profit.tax, id],
+            function(err) {
+                if (err) reject(err);
+                else resolve();
+            }
+        );
+    });
+};

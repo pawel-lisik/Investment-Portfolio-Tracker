@@ -11,6 +11,82 @@ let cachedTotalDeposits = 0;
 let cachedTotalNetProfit = 0;
 let currentJournalEntries: any[] = [];
 let currentDeposits: any[] = [];
+let currentProfits: any[] = [];
+
+// MOTYW
+// --- OBSŁUGA MOTYWU (JASNY/CIEMNY/SYSTEMOWY) ---
+function applyTheme(theme: string) {
+    if (theme === 'light') {
+        document.documentElement.classList.add('light-mode');
+    } else if (theme === 'dark') {
+        document.documentElement.classList.remove('light-mode');
+    } else if (theme === 'system') {
+        // Magiczna funkcja odpytująca system operacyjny o jego obecny kolor!
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+            document.documentElement.classList.remove('light-mode');
+        } else {
+            document.documentElement.classList.add('light-mode');
+        }
+    }
+}
+
+// 1. Odczytanie i nałożenie motywu od razu przy starcie aplikacji
+const savedTheme = localStorage.getItem('appTheme') || 'system';
+applyTheme(savedTheme);
+
+// 2. Automatyczne nasłuchiwanie na zmiany w systemie (np. gdy o 20:00 Windows włączy tryb ciemny)
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    const currentTheme = localStorage.getItem('appTheme') || 'system';
+    if (currentTheme === 'system') {
+        applyTheme('system'); // Reagujemy na żywo tylko, jeśli wybrano tryb "Systemowy"
+    }
+});
+
+// --- ZMIENNE DO WIDŻETU WALUTOWEGO ---
+let currentCurrencyView = 'USD';
+let cachedAvgUsd = 0;
+let cachedAvgEur = 0;
+let cachedCurrentUsd = 0;
+let cachedCurrentEur = 0;
+
+function updateCurrencyWidgetUI() {
+    const title = document.getElementById('currency-card-title');
+    const currentRateEl = document.getElementById('currency-card-current');
+    const avgEl = document.getElementById('currency-card-avg');
+    const card = document.getElementById('clickable-currency-card');
+    const description = document.getElementById('currency-description');
+
+    if (!title || !currentRateEl || !avgEl || !card || !description) return;
+
+    title.style.color = '#969696';
+    currentRateEl.style.color = '#969696';
+
+    if (currentCurrencyView === 'USD') {
+        title.innerText = '$';
+        currentRateEl.innerHTML = cachedCurrentUsd > 0 ? `Obecny kurs: \n<b>${cachedCurrentUsd.toFixed(4)} zł</b>` : 'Obecny kurs: -- zł';
+        avgEl.innerText = cachedAvgUsd > 0 ? `${cachedAvgUsd.toFixed(4)} zł` : 'Brak danych';
+        description.innerText = 'Średni kurs zakupu przy depozytach:';
+        
+        // Koloruj na zielono jeśli średnia jest mniejsza (kupiliśmy taniej) niż aktualny kurs
+        if (cachedAvgUsd > 0 && cachedCurrentUsd > 0) {
+            avgEl.style.color = cachedAvgUsd < cachedCurrentUsd ? '#4CAF50' : '#F44336';
+        } else {
+            avgEl.style.color = '#969696';
+        }
+    } else {
+        title.innerText = '€';
+        currentRateEl.innerHTML = cachedCurrentEur > 0 ? `Obecny kurs: \n<b>${cachedCurrentEur.toFixed(4)} zł</b>` : 'Obecny kurs: -- zł';
+        avgEl.innerText = cachedAvgEur > 0 ? `${cachedAvgEur.toFixed(4)} zł` : 'Brak danych';
+        description.innerText = 'Średni kurs zakupu przy depozytach:';
+        
+        if (cachedAvgEur > 0 && cachedCurrentEur > 0) {
+            avgEl.style.color = cachedAvgEur < cachedCurrentEur ? '#4CAF50' : '#F44336';
+        } else {
+            avgEl.style.color = '#969696';
+        }
+    }
+}
 
 // --- USTAWIENIA (LocalStorage) ---
 let userBrokers = JSON.parse(localStorage.getItem('userBrokers') || '[]');
@@ -56,17 +132,20 @@ function updateBrokerDropdowns() {
     const depDestSelect = document.getElementById('dep-dest') as HTMLSelectElement; 
     const transferFromSelect = document.getElementById('transfer-from') as HTMLSelectElement; 
     const transferToSelect = document.getElementById('transfer-to') as HTMLSelectElement; 
+    const assetBrokerSelect = document.getElementById('asset-broker') as HTMLSelectElement; // DODANE
     
     if (profBrokerSelect) profBrokerSelect.innerHTML = '';
     if (depDestSelect) depDestSelect.innerHTML = '';
     if (transferFromSelect) transferFromSelect.innerHTML = '';
     if (transferToSelect) transferToSelect.innerHTML = '';
+    if (assetBrokerSelect) assetBrokerSelect.innerHTML = ''; // DODANE
 
     userBrokers.forEach((b: any) => {
         if (profBrokerSelect) profBrokerSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`;
         if (depDestSelect) depDestSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`;
         if (transferFromSelect) transferFromSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`;
         if (transferToSelect) transferToSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`;
+        if (assetBrokerSelect) assetBrokerSelect.innerHTML += `<option value="${b.name}">${b.name}</option>`; // DODANE
     });
 }
 
@@ -75,7 +154,7 @@ function renderSettingsBrokers() {
     brokersListContainer.innerHTML = '';
     userBrokers.forEach((broker: any, index: number) => {
         brokersListContainer.innerHTML += `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(140,140,140,0.3);">
                 <span><strong>${broker.name}</strong> <small style="color:#aaa;">(${broker.type})</small></span>
                 <button class="btn btn-delete-broker-setting" data-index="${index}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
             </div>
@@ -99,6 +178,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const inputNewBrokerName = document.getElementById('setting-new-broker-name') as HTMLInputElement;
     const selectNewBrokerType = document.getElementById('setting-new-broker-type') as HTMLSelectElement;
 
+    // --- OBSŁUGA LISTY ROZWIJANEJ MOTYWU W USTAWIENIACH ---
+    const selectTheme = document.getElementById('setting-theme') as HTMLSelectElement;
+    
+    if (selectTheme) {
+        // Ustaw wartość selecta na tę wyciągniętą z pamięci
+        selectTheme.value = localStorage.getItem('appTheme') || 'system';
+        
+        // Zmień motyw i zapisz go w pamięci po zmianie opcji
+        selectTheme.addEventListener('change', () => {
+            const newTheme = selectTheme.value;
+            localStorage.setItem('appTheme', newTheme);
+            applyTheme(newTheme);
+        });
+    }
 
     btnSettings?.addEventListener('click', () => {
         if (selectPortfolioType) selectPortfolioType.value = userPortfolioThreshold.toString();
@@ -163,6 +256,25 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-back-to-stocks')?.addEventListener('click', () => {
         document.querySelector<HTMLElement>('[data-target="portfolio-stocks"]')?.click();
     });
+
+    document.getElementById('btn-back-to-profits')?.addEventListener('click', () => {
+    document.querySelector<HTMLElement>('[data-target="taxes"]')?.click();
+    });
+
+
+    document.querySelector('[data-target="watchlist"]')?.addEventListener('click', () => {
+        if(typeof (window as any).loadWatchlistData === 'function') {
+            (window as any).loadWatchlistData();
+        }
+        document.querySelector('[data-target="portfolio-stocks"]')?.classList.add('active');
+    });
+
+    document.querySelector('[data-target="profits-list"]')?.addEventListener('click', () => {
+        document.querySelector('[data-target="taxes"]')?.classList.add('active');
+    });
+
+
+
     
     const btnToggleAlloc = document.getElementById('btn-toggle-allocation');
     const viewChart = document.getElementById('allocation-view-chart');
@@ -213,7 +325,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentStatView === 0) {
             statTitle.innerText = 'Całkowita wartość depozytów (PLN)';
             statVal.innerText = `${cachedTotalDeposits.toFixed(2)} zł`;
-            statVal.style.color = '#fff';
         } else if (currentStatView === 1) {
             statTitle.innerText = 'Całkowity zysk netto (PLN)';
             statVal.innerText = `${cachedTotalNetProfit.toFixed(2)} zł`;
@@ -224,6 +335,13 @@ document.addEventListener('DOMContentLoaded', () => {
             statVal.innerText = `${roi.toFixed(2)} %`;
             statVal.style.color = roi >= 0 ? '#4CAF50' : '#ff5252';
         }
+    });
+
+    // Przełączanie kafelka walutowego (USD <-> EUR)
+    const currencyCard = document.getElementById('clickable-currency-card');
+    currencyCard?.addEventListener('click', () => {
+        currentCurrencyView = currentCurrencyView === 'USD' ? 'EUR' : 'USD';
+        updateCurrencyWidgetUI();
     });
 
     // --- OBSŁUGA MODALA STRATEGII ---
@@ -419,9 +537,145 @@ document.getElementById('btn-new-deposit')?.addEventListener('click', () => {
 });
 document.getElementById('btn-cancel-deposit')?.addEventListener('click', () => modalDeposit?.classList.add('hidden'));
 
+// --- FUNKCJA OBSŁUGUJĄCA DYNAMICZNE OSTRZEŻENIA W ZYSKACH ---
+function updateProfitWarning() {
+    const warningEl = document.getElementById('prof-warning');
+    const brokerSelect = document.getElementById('prof-broker') as HTMLSelectElement;
+    if (!warningEl || !brokerSelect) return;
+
+    const selectedBrokerName = brokerSelect.value;
+    const brokerObj = userBrokers.find((b: any) => b.name === selectedBrokerName);
+
+    if (brokerObj) {
+        if (brokerObj.type === 'Obligacje skarbowe krajowe') {
+            warningEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> Pamiętaj, aby w końcowej kwocie uwzględnić zamianę obligacji i wykup obligacji, które zapadły.';
+            warningEl.style.display = 'block';
+        } else if (brokerObj.type === 'Obligacje korporacyjne i zagraniczne') {
+            warningEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> Pamiętaj, aby w zyskach uwzględnić opłaty transakcyjne i ewentualne straty (różnice w cenie kupna i sprzedaży obligacji).';
+            warningEl.style.display = 'block';
+        } else {
+            warningEl.style.display = 'none';
+        }
+    } else {
+        warningEl.style.display = 'none';
+    }
+}
+
+// Podpięcie pod zmianę wartości na liście
+// --- OBSŁUGA IMPORTU ODSETEK Z PKO (ZYSKI) ORAZ OSTRZEŻEŃ ---
+const profBrokerSelect = document.getElementById('prof-broker') as HTMLSelectElement;
+const btnPkoImport = document.getElementById('btn-pko-import');
+const pkoImportFile = document.getElementById('pko-import-file') as HTMLInputElement;
+const pkoInfo = document.getElementById('pko-info') as HTMLInputElement;
+
+// 1. Reakcja na zmianę wybranego konta (pokazuje ostrzeżenia ORAZ przycisk PKO)
+// 1. Reakcja na zmianę wybranego konta (pokazuje ostrzeżenia ORAZ przycisk PKO)
+profBrokerSelect?.addEventListener('change', () => {
+    updateProfitWarning(); 
+
+    const selectedBroker = profBrokerSelect.value;
+    const brokerObj = userBrokers.find((b: any) => b.name === selectedBroker);
+    
+    // Twarde wymuszenie display block/none
+    if (brokerObj && brokerObj.type === 'Obligacje skarbowe krajowe') {
+        if (btnPkoImport) btnPkoImport.style.display = 'block';
+        if (pkoInfo) pkoInfo.style.display = 'block';
+    } else {
+        if (btnPkoImport) btnPkoImport.style.display = 'none';
+        if (pkoInfo) pkoInfo.style.display = 'none';
+    }
+});
+
+// 2. Otwieranie Modala Zysków
 document.getElementById('btn-new-profit')?.addEventListener('click', () => {
+    (document.getElementById('prof-id') as HTMLInputElement).value = '';
     (document.getElementById('prof-date') as HTMLInputElement).valueAsDate = new Date();
+    (document.getElementById('prof-amount') as HTMLInputElement).value = '';
+    (document.getElementById('prof-tax') as HTMLInputElement).value = '';
+    
     modalProfit?.classList.remove('hidden');
+    profBrokerSelect?.dispatchEvent(new Event('change')); // Wymusza odświeżenie (pokazuje przycisk/ostrzeżenie)
+});
+
+// 3. Włączenie okna wyboru pliku
+btnPkoImport?.addEventListener('click', () => pkoImportFile?.click());
+
+// 4. Analiza pliku PKO
+pkoImportFile?.addEventListener('change', async (e) => {
+    const target = e.target as HTMLInputElement;
+    if (!target.files || target.files.length === 0) return;
+    
+    const file = target.files[0];
+    const text = await file.text();
+    const lines = text.split('\n');
+    
+    let totalGross = 0;
+    let count = 0;
+    
+    for (let line of lines) {
+        const separator = line.includes(';') ? ';' : ',';
+        const parts = line.split(separator);
+        
+        // PKO BP używa 7 kolumn (indeks 6 to Kwota)
+        if (parts.length >= 7) {
+            const rodzaj = parts[1].toLowerCase();
+            
+            if (rodzaj.includes('naliczenie odsetek')) {
+                // Usuwamy cudzysłowy, ewentualne spacje w tysiącach i polski przecinek
+                const amountStr = parts[6].replace(/"/g, '').replace(/\s/g, '').replace(',', '.');
+                const amount = parseFloat(amountStr);
+                
+                if (!isNaN(amount)) {
+                    totalGross += amount;
+                    count++;
+                }
+            }
+        }
+    }
+    
+    if (count > 0) {
+        // ODLICZANIE PODATKU BELKI (Kwota brutto * 0.81 = Kwota netto)
+        const netProfit = totalGross * 0.81; 
+        
+        const profAmount = document.getElementById('prof-amount') as HTMLInputElement;
+        const profTax = document.getElementById('prof-tax') as HTMLInputElement;
+        const profCat = document.getElementById('prof-cat') as HTMLSelectElement;
+        
+        // Automatyczne wypełnianie okienka:
+        if (profAmount) profAmount.value = netProfit.toFixed(2);
+        if (profTax) profTax.value = 'Pobrany';
+        if (profCat) profCat.value = 'Kupony';
+        
+        alert(`Znaleziono ${count} operacji typu "naliczenie odsetek".\n\nSuma brutto: ${totalGross.toFixed(2)} zł\nTwój zysk netto po potrąceniu podatku: ${netProfit.toFixed(2)} zł.\n\nFormularz został wypełniony automatycznie!`);
+    } else {
+        alert("W wybranym pliku nie znaleziono operacji typu 'naliczenie odsetek'. Upewnij się, że wgrywasz poprawny plik z Historii Dyspozycji PKO.");
+    }
+    
+    target.value = ''; // Reset inputa
+});
+
+// ZAPIS ZYSKU (Z uwzględnieniem edycji)
+document.getElementById('btn-save-profit')?.addEventListener('click', async () => {
+    const idStr = (document.getElementById('prof-id') as HTMLInputElement).value;
+    
+    const profit = {
+        date: (document.getElementById('prof-date') as HTMLInputElement).value,
+        broker: (document.getElementById('prof-broker') as HTMLSelectElement).value,
+        category: (document.getElementById('prof-cat') as HTMLSelectElement).value,
+        amount: parseFloat((document.getElementById('prof-amount') as HTMLInputElement).value) || 0,
+        tax: parseFloat((document.getElementById('prof-tax') as HTMLInputElement).value) || 0
+    };
+
+    if (idStr) {
+        // Zaktualizuj istniejący
+        await (window as any).api.updateProfit(parseInt(idStr), profit);
+    } else {
+        // Dodaj nowy
+        await (window as any).api.addProfit(profit);
+    }
+    
+    modalProfit?.classList.add('hidden');
+    loadData();
 });
 document.getElementById('btn-cancel-profit')?.addEventListener('click', () => modalProfit?.classList.add('hidden'));
 
@@ -627,18 +881,7 @@ document.getElementById('btn-save-deposit')?.addEventListener('click', async () 
     loadData();
 });
 
-document.getElementById('btn-save-profit')?.addEventListener('click', async () => {
-    const profit = {
-        date: (document.getElementById('prof-date') as HTMLInputElement).value,
-        broker: (document.getElementById('prof-broker') as HTMLSelectElement).value,
-        category: (document.getElementById('prof-cat') as HTMLSelectElement).value,
-        amount: parseFloat((document.getElementById('prof-amount') as HTMLInputElement).value) || 0,
-        tax: parseFloat((document.getElementById('prof-tax') as HTMLInputElement).value) || 0
-    };
-    await (window as any).api.addProfit(profit);
-    modalProfit?.classList.add('hidden');
-    loadData();
-});
+
 
 // KLIKANIE EDYTUJ/USUŃ W TABELI WPŁAT
 document.getElementById('deposits-tbody')?.addEventListener('click', async (e) => {
@@ -684,18 +927,178 @@ document.getElementById('deposits-tbody')?.addEventListener('click', async (e) =
     }
 });
 
+// KLIKANIE EDYTUJ/USUŃ W TABELI ZYSKÓW
+document.getElementById('profits-list-tbody')?.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement;
+    const editBtn = target.closest('.btn-edit-profit');
+    const deleteBtn = target.closest('.btn-delete-profit');
 
+    if (deleteBtn) {
+        const id = parseInt(deleteBtn.getAttribute('data-id')!);
+        if (confirm("Czy na pewno chcesz usunąć ten zysk z historii?")) {
+            await (window as any).api.deleteProfit(id);
+            loadData();
+        }
+    } 
+
+    else if (editBtn) {
+        const id = parseInt(editBtn.getAttribute('data-id')!);
+        const p = currentProfits.find(x => x.id === id);
+        
+        if (p) {
+            (document.getElementById('prof-id') as HTMLInputElement).value = p.id.toString();
+            (document.getElementById('prof-date') as HTMLInputElement).value = p.date;
+            (document.getElementById('prof-broker') as HTMLSelectElement).value = p.broker;
+            
+            // Dynamiczne dopisanie opcji, jeśli edytujemy wpis z wygenerowaną z automatu nazwą
+            const catSelect = document.getElementById('prof-cat') as HTMLSelectElement;
+            if (!Array.from(catSelect.options).some(opt => opt.value === p.category)) {
+                catSelect.innerHTML += `<option value="${p.category}">${p.category}</option>`;
+            }
+            catSelect.value = p.category;
+            
+            (document.getElementById('prof-amount') as HTMLInputElement).value = p.amount.toString();
+            (document.getElementById('prof-tax') as HTMLInputElement).value = p.tax.toString();
+
+            updateProfitWarning(); // Sprawdź komunikat dla ładowanego rekordu
+            modalProfit?.classList.remove('hidden');
+        }
+    }
+});
+
+
+// --- 5. GŁÓWNA LOGIKA ŁADOWANIA DANYCH ---
 // --- 5. GŁÓWNA LOGIKA ŁADOWANIA DANYCH ---
 async function loadData() {
     const deposits = await (window as any).api.getDeposits();
-    const profits = await (window as any).api.getProfits();
-    
+    let profits = await (window as any).api.getProfits();
+    const assets = await (window as any).api.getAssets();
+
+    // ========================================================
+    // --- AUTOMATYCZNE GENEROWANIE KUPONÓW OBLIGACJI ---
+    // ========================================================
+    let newProfitsAdded = false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const a of assets) {
+        // Tłumaczenie brokera na typ, żeby sprawdzić czy to obligacje
+        const brokerObj = userBrokers.find((b: any) => b.name === a.type);
+        const realType = brokerObj ? brokerObj.type : a.type;
+
+        // Interesują nas tylko te ze zdefiniowanym kuponem
+        if (!realType.includes('Obligacje korporacyjne')) continue;
+        if (!a.coupon_date || !a.coupon_rate || a.quantity <= 0) continue;
+
+        const nominal = 1000; // Domyślna wartość nominalna
+        let payoutDate = new Date(a.coupon_date);
+        payoutDate.setHours(0, 0, 0, 0);
+        
+        let purchaseDate = new Date(a.purchase_date);
+        purchaseDate.setHours(0, 0, 0, 0);
+        
+        const freqMonths = a.coupon_freq === 'Półroczna' ? 6 : 12;
+
+        // Przewijamy daty wypłat, aż znajdziemy pierwszą PO dacie zakupu
+        while (payoutDate <= purchaseDate) {
+            payoutDate.setMonth(payoutDate.getMonth() + freqMonths);
+        }
+
+        let isFirstCoupon = true;
+        // Unikalna nazwa kategorii, żeby program wiedział, że to z automatu
+        const categoryName = `Kupony - ${a.name}`; 
+
+        while (payoutDate <= today) {
+            const payoutDateStr = payoutDate.toISOString().split('T')[0];
+            
+            // Sprawdzamy, czy w bazie JEST JUŻ wpis dla tego kuponu (zabezpieczenie przed dublowaniem)
+            const alreadyExists = profits.some((p: any) => p.category === categoryName && p.date === payoutDateStr);
+            
+            if (!alreadyExists) {
+                const yearlyCoupon = nominal * a.quantity * (a.coupon_rate / 100);
+                const periodCoupon = freqMonths === 6 ? yearlyCoupon / 2 : yearlyCoupon;
+                let realProfitBrutto = periodCoupon;
+
+                // Proporcjonalne pomniejszenie zysku z pierwszego kuponu 
+                // o czas, w którym nie byliśmy właścicielami
+                if (isFirstCoupon) {
+                    const prevPayoutDate = new Date(payoutDate);
+                    prevPayoutDate.setMonth(prevPayoutDate.getMonth() - freqMonths);
+                    
+                    const totalDays = Math.round((payoutDate.getTime() - prevPayoutDate.getTime()) / (1000 * 3600 * 24));
+                    const daysHeld = Math.round((payoutDate.getTime() - purchaseDate.getTime()) / (1000 * 3600 * 24));
+                    
+                    if (daysHeld > 0 && daysHeld < totalDays) {
+                        realProfitBrutto = periodCoupon * (daysHeld / totalDays);
+                    }
+                }
+
+                const tax = realProfitBrutto * 0.19;
+
+                // TWARDY ZAPIS DO BAZY (Dzięki temu, nawet gdy zmienisz ilość jednostek za pół roku, ten wpis zostanie)
+                await (window as any).api.addProfit({
+                    date: payoutDateStr,
+                    broker: a.type,
+                    category: categoryName,
+                    amount: realProfitBrutto,
+                    tax: tax
+                });
+                newProfitsAdded = true;
+            }
+
+            isFirstCoupon = false;
+            payoutDate.setMonth(payoutDate.getMonth() + freqMonths);
+        }
+    }
+
+    // Jeśli w locie dodaliśmy nowe kupony do bazy, pobieramy odświeżoną listę
+    if (newProfitsAdded) {
+        profits = await (window as any).api.getProfits();
+    }
+    // ========================================================
+
+    currentProfits = profits; // Aktualizacja zmiennej globalnej
+
+    // Renderowanie dolnej tabeli (Historia wprowadzonych zysków)
+// Renderowanie dolnej tabeli (Historia wprowadzonych zysków)
+    const tbodyProfList = document.getElementById('profits-list-tbody');
+    if (tbodyProfList) {
+        tbodyProfList.innerHTML = '';
+        [...profits].reverse().forEach((p: any) => { 
+            const catDisplay = p.category.startsWith('Kupony') ? p.category : `<span style="text-transform: capitalize;">${p.category}</span>`;
+            
+            // Sprawdzamy czy to obligacje skarbowe z wpisanym zerowym podatkiem
+            const brokerObj = userBrokers.find((b: any) => b.name === p.broker);
+            const isSkarbowe = brokerObj && brokerObj.type === 'Obligacje skarbowe krajowe';
+            
+            let taxDisplay = `${p.tax > 0 ? '-' : ''}${p.tax.toFixed(2)} zł`;
+            if (isSkarbowe && p.tax === 0 && (p.category === 'Kupony' || p.category === 'odsetki')) {
+                taxDisplay = '<span style="color: #888">pobrany</span>';
+            }
+            
+            tbodyProfList.innerHTML += `
+                <tr>
+                    <td>${p.date}</td>
+                    <td>${p.broker}</td>
+                    <td>${catDisplay}</td>
+                    <td style="color: #4CAF50;">${p.amount.toFixed(2)} zł</td>
+                    <td style="color: #F44336;">${taxDisplay}</td>
+                    <td style="padding: 5px; width: 1%; white-space: nowrap; text-align: right;">
+                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                            <button class="btn btn-edit-profit" data-id="${p.id}" style="font-size: 16px; background-color: var(--purple); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-pen"></i></button>
+                            <button class="btn btn-delete-profit" data-id="${p.id}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    }
+
     const tbodyDep = document.getElementById('deposits-tbody');
     if (tbodyDep) tbodyDep.innerHTML = '';
     
     let totalAssetsPLN = 0;
     const allocation: Record<string, number> = {};
-
     let totalUsdAmount = 0; let totalUsdPln = 0;
     let totalEurAmount = 0; let totalEurPln = 0;
 
@@ -713,7 +1116,6 @@ async function loadData() {
             totalEurPln += d.amount_pln;
         }
 
-
         if (tbodyDep) {
             tbodyDep.innerHTML += `
                 <tr>
@@ -724,51 +1126,50 @@ async function loadData() {
                     <td>${d.destination}</td>
                     
                     <td style="padding: 5px; width: 1%; white-space: nowrap; text-align: right;">
-                        <!-- Maska wyrównana do prawej przez margin-left: auto -->
                         <div style="width: 140px; overflow: hidden; border-radius: 4px; position: relative; margin-left: auto;">
-                            
-                            <!-- Panel startuje domyślnie z pozycji 0 (Widok 1 widać, Widok 2 jest ukryty z prawej) -->
                             <div id="slider-dep-${d.id}" style="display: flex; width: 280px; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0); align-items: center;">  
                                 
-                                <!-- WIDOK 1: Domyślnie widoczny przycisk "Więcej" na start (Lewa strona slidera) -->
                                 <div style="width: 140px; display: flex; gap: 5px; justify-content: flex-end; align-items: center; height: 30px;">
                                     <button class="btn btn-more-dep" data-id="${d.id}" style="font-size: 11px; background: none; border: 2px solid #ccc; border-radius: 50%; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;">
                                         <i class="fa-solid fa-ellipsis"></i>
                                     </button>
                                 </div>
 
-                                <!-- WIDOK 2: Przyciski akcji (Prawa strona slidera, wjeżdża z prawej po kliknięciu 'Więcej') -->
                                 <div style="width: 140px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; height: 30px;">
-                                
                                     <button class="btn btn-edit-dep" data-id="${d.id}" style="font-size: 16px; background-color: var(--purple); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-pen"></i></button>
                                     <button class="btn btn-delete-dep" data-id="${d.id}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
-
-
-                                    <!-- Krzyżyk "Anuluj" wyrównany do prawej -->
                                     <button class="btn btn-close-slider" data-id="${d.id}" style="font-size: 20px; background: none; border: none; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;" title="Anuluj">
                                         <i class="fa-regular fa-circle-xmark"></i>
                                     </button>
                                 </div>
-
                             </div>
                         </div>
                     </td>
-
                 </tr>
             `;
         }
     });
 
     cachedTotalDeposits = totalAssetsPLN;
+    cachedAvgUsd = totalUsdAmount > 0 ? totalUsdPln / totalUsdAmount : 0;
+    cachedAvgEur = totalEurAmount > 0 ? totalEurPln / totalEurAmount : 0;
+    
+    try {
+        const resUsd = await fetch('https://api.nbp.pl/api/exchangerates/rates/A/USD/?format=json');
+        if (resUsd.ok) {
+            const data = await resUsd.json();
+            cachedCurrentUsd = data.rates[0].mid;
+        }
+        const resEur = await fetch('https://api.nbp.pl/api/exchangerates/rates/A/EUR/?format=json');
+        if (resEur.ok) {
+            const data = await resEur.json();
+            cachedCurrentEur = data.rates[0].mid;
+        }
+    } catch(e) {
+        console.log("Brak dostępu do NBP.");
+    }
 
-    const avgUsd = totalUsdAmount > 0 ? totalUsdPln / totalUsdAmount : 0;
-    const avgEur = totalEurAmount > 0 ? totalEurPln / totalEurAmount : 0;
-    
-    const usdEl = document.getElementById('avg-rate-usd');
-    const eurEl = document.getElementById('avg-rate-eur');
-    
-    if (usdEl) usdEl.innerText = avgUsd > 0 ? `${avgUsd.toFixed(4)} PLN` : '-';
-    if (eurEl) eurEl.innerText = avgEur > 0 ? `${avgEur.toFixed(4)} PLN` : '-';
+    updateCurrencyWidgetUI();
 
     const allocMap = {
         akcje: 0, skarbowe: 0, korpo: 0, konto: 0, krypto: 0, metale: 0, inne: 0
@@ -851,12 +1252,22 @@ async function loadData() {
         if (!groupedByYear[year]) groupedByYear[year] = {};
         
         if (!groupedByYear[year][p.broker]) {
-            groupedByYear[year][p.broker] = { "dywidendy": {profit: 0, tax: 0}, "sprzedaz": {profit: 0, tax: 0}, "odsetki": {profit: 0, tax: 0} };
+            // DODANE POLA DLA KUPONÓW W STRUKTURZE LAT
+            groupedByYear[year][p.broker] = { 
+                "dywidendy": {profit: 0, tax: 0}, 
+                "sprzedaz": {profit: 0, tax: 0}, 
+                "odsetki": {profit: 0, tax: 0},
+                "kupony": {profit: 0, tax: 0}
+            };
         }
         
-        if (groupedByYear[year][p.broker][p.category]) {
-            groupedByYear[year][p.broker][p.category].profit += p.amount;
-            groupedByYear[year][p.broker][p.category].tax += p.tax;
+        // Zabezpieczenie dynamicznej nazwy kategorii
+        let targetCategory = p.category;
+        if (p.category.startsWith('Kupony')) targetCategory = 'kupony';
+
+        if (groupedByYear[year][p.broker][targetCategory]) {
+            groupedByYear[year][p.broker][targetCategory].profit += p.amount;
+            groupedByYear[year][p.broker][targetCategory].tax += p.tax;
         }
     });
 
@@ -869,12 +1280,13 @@ async function loadData() {
 
         activeBrokersInYear.forEach(b => {
             const data = groupedByYear[year][b];
-            totalYearProfit += data['dywidendy'].profit + data['sprzedaz'].profit + data['odsetki'].profit;
-            totalYearTax += data['dywidendy'].tax + data['sprzedaz'].tax + data['odsetki'].tax;
+            totalYearProfit += data['dywidendy'].profit + data['sprzedaz'].profit + data['odsetki'].profit + data['kupony'].profit;
+            totalYearTax += data['dywidendy'].tax + data['sprzedaz'].tax + data['odsetki'].tax + data['kupony'].tax;
         });
 
         const netProfit = totalYearProfit - totalYearTax;
         const profitColor = netProfit >= 0 ? '#4CAF50' : '#ff5252'; 
+
 
         let tableHTML = `
         <div class="year-block">
@@ -885,37 +1297,77 @@ async function loadData() {
                     <strong style="font-size: 18px; color: ${profitColor};">${netProfit.toFixed(2)} zł</strong>
                 </div>
             </div>
-            <table class="tax-table">
+            <table class="tax-table" style="width: 100%; border-collapse: collapse;">
                 <thead>
-                    <tr>
-                        <th>Komponent</th>
-                        <th>Zysk (Dywidendy)</th><th>Podatek (Dywidendy)</th>
-                        <th>Zysk (Sprzedaż)</th><th>Podatek (Sprzedaż)</th>
-                        <th>Zysk (Odsetki)</th><th>Podatek (Odsetki)</th>
+                    <!-- GŁÓWNY RZĄD NAGŁÓWKÓW -->
+                    <tr style="background-color: rgba(255,255,255,0.05);">
+                        <th rowspan="2" style="padding: 10px; text-align: left; vertical-align: middle; border-right: 1px solid var(--border);">Konto</th>
+                        <th colspan="2" style="padding: 8px; text-align: center; border-right: 1px solid var(--border);">Dywidendy</th>
+                        <th colspan="2" style="padding: 8px; text-align: center; border-right: 1px solid var(--border);">Sprzedaż</th>
+                        <th colspan="2" style="padding: 8px; text-align: center; border-right: 1px solid var(--border);">Odsetki</th>
+                        <th colspan="2" style="padding: 8px; text-align: center; color: #00d2e0;">Kupony</th>
+                    </tr>
+                    <!-- RZĄD PODKATEGORII (Zysk / Podatek) -->
+                    <tr style="background-color: rgba(255,255,255,0.02); font-size: 12px; color: #aaa;">
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal;">Zysk</th>
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Podatek</th>
+                        
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal;">Zysk</th>
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Podatek</th>
+                        
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal;">Zysk</th>
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Podatek</th>
+                        
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; color: #00d2e0;">Zysk</th>
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; color: #00d2e0;">Podatek</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
+
+
         activeBrokersInYear.forEach(b => {
             const data = groupedByYear[year][b];
+            
+            // Logika wykrywania obligacji skarbowych dla podsumowania rocznego
+            const brokerObj = userBrokers.find((br:any) => br.name === b);
+            const isSkarbowe = brokerObj && brokerObj.type === 'Obligacje skarbowe krajowe';
+
+            // Inteligentne funkcje formatujące - ukrywają zera zostawiając czyste puste pole!
+            const fProf = (val: number) => val === 0 ? '' : `${val.toFixed(2)} zł`;
+            const fTax = (val: number, isPobrany: boolean = false) => {
+                if (isPobrany) return '<span style="color: #888; font-style: italic;">pobrany</span>';
+                return val === 0 ? '' : `-${val.toFixed(2)} zł`;
+            };
+
+            // Sprawdzamy czy w tym miejscu podatek z obligacji został "pobrany" u źródła
+            const odsPobrany = isSkarbowe && data['odsetki'].profit > 0 && data['odsetki'].tax === 0;
+            const kupPobrany = isSkarbowe && data['kupony'].profit > 0 && data['kupony'].tax === 0;
+
             tableHTML += `
-                <tr>
-                    <td>${b}</td>
-                    <td class="profit-value">${data['dywidendy'].profit.toFixed(2)} zł</td>
-                    <td class="tax-value">${data['dywidendy'].tax > 0 ? '-' : ''}${data['dywidendy'].tax.toFixed(2)} zł</td>
-                    <td class="profit-value">${data['sprzedaz'].profit.toFixed(2)} zł</td>
-                    <td class="tax-value">${data['sprzedaz'].tax > 0 ? '-' : ''}${data['sprzedaz'].tax.toFixed(2)} zł</td>
-                    <td class="profit-value">${data['odsetki'].profit.toFixed(2)} zł</td>
-                    <td class="tax-value">${data['odsetki'].tax > 0 ? '-' : ''}${data['odsetki'].tax.toFixed(2)} zł</td>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 10px; border-right: 1px solid var(--border);"><strong>${b}</strong></td>
+                    
+                    <td class="profit-value" style="padding: 10px; text-align: right;">${fProf(data['dywidendy'].profit)}</td>
+                    <td class="tax-value" style="padding: 10px; text-align: right; border-right: 1px solid var(--border);">${fTax(data['dywidendy'].tax)}</td>
+                    
+                    <td class="profit-value" style="padding: 10px; text-align: right;">${fProf(data['sprzedaz'].profit)}</td>
+                    <td class="tax-value" style="padding: 10px; text-align: right; border-right: 1px solid var(--border);">${fTax(data['sprzedaz'].tax)}</td>
+                    
+                    <td class="profit-value" style="padding: 10px; text-align: right;">${fProf(data['odsetki'].profit)}</td>
+                    <td class="tax-value" style="padding: 10px; text-align: right; border-right: 1px solid var(--border);">${fTax(data['odsetki'].tax, odsPobrany)}</td>
+                    
+                    <td class="profit-value" style="padding: 10px; text-align: right; color: #00d2e0; font-weight: bold;">${fProf(data['kupony'].profit)}</td>
+                    <td class="tax-value" style="padding: 10px; text-align: right; color: #ff9230;">${fTax(data['kupony'].tax, kupPobrany)}</td>
                 </tr>
             `;
         });
 
         tableHTML += `</tbody></table></div>`;
+
         if(taxesContainer) taxesContainer.innerHTML += tableHTML;
     });
-
 
     loadAssetsData();
     loadJournalData();
@@ -924,24 +1376,15 @@ async function loadData() {
     const emptyLabel = document.getElementById('empty-label');
 
     if (totalAssetsPLN === 0) {
-        // Jeśli portfel jest pusty - ukryj
         if (allChartsWrapper) allChartsWrapper.style.display = 'none';
         if (emptyLabel) emptyLabel.style.display = '';
 
-
-
-
         const dashboardBtn = document.querySelector('button[data-target="dashboard"]');
-        // Sprawdzamy, czy ma klasę 'active'
         if (dashboardBtn && dashboardBtn.classList.contains('active')) {
             modalSettings?.classList.remove('hidden');
             renderSettingsBrokers();
         }
-
-
-
     } else {
-        // Zresetuj ukrycie, niech zadziała oryginalny CSS z `charts-container`
         if (allChartsWrapper) allChartsWrapper.style.display = ''; 
         if (emptyLabel) emptyLabel.style.display = 'none';
         renderCharts(allocMap, deposits, profits);
@@ -975,16 +1418,27 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
                 labels: displayLabels,
                 datasets: [{
                     data: filteredData,
-                    backgroundColor: ['#2196F3', '#4CAF50', '#F44336', '#FFC107', '#9C27B0', '#FF5722', '#00BCD4']
+                    backgroundColor: ['#0091ff', '#30d158', '#ff4245', '#ff9230', '#00d2e0', '#ffd600', '#939393'],
+                    borderColor: 'rgba(255, 255, 255, 0.5)', 
+                    borderWidth: 1 
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'right', labels: { color: '#d4d4d4' } },
-                    title: { display: true, text: 'Skład Portfolio', color: '#fff' }
+                    legend: { 
+                        position: 'right', 
+                        labels: { 
+                            color: 'rgba(120, 120, 120, 0.8)',
+                            usePointStyle: true,      // Włącza nowoczesny styl legendy (bez ramek!)
+                            pointStyle: 'rectRounded',     // Zmienia kwadraty na eleganckie kółka (możesz też wpisać 'rectRounded')
+                            padding: 20,           
+                        } 
+                    },
+                    title: { display: true, text: 'Skład Portfolio'}
                 }
+
             }
         });
     }
@@ -1078,8 +1532,8 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color: '#d4d4d4' } },
-                    title: { display: true, text: 'Wzrost Wartości Portfela', color: '#fff' },
+                    legend: { labels: { color: 'rgba(120, 120, 120, 0.8)' } },
+                    title: { display: true, text: 'Wzrost Wartości Portfela'},
                     tooltip: {
                         callbacks: {
                             label: function(context: any) {
@@ -1092,8 +1546,8 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
                     }
                 },
                 scales: {
-                    x: { ticks: { color: '#aaa' }, grid: { color: '#333' } },
-                    y: { ticks: { color: '#aaa' }, grid: { color: '#333' } }
+                    x: { ticks: { color: 'rgba(120, 120, 120, 0.8)' }, grid: { color: 'rgba(120, 120, 120, 0.2)' } },
+                    y: { ticks: { color: 'rgba(120, 120, 120, 0.8)' }, grid: { color: 'rgba(120, 120, 120, 0.2)' } }
                 }
             }
         });
@@ -1149,8 +1603,16 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
             options: {
                 maintainAspectRatio: false,
                 responsive: true,
-                scales: { x: { stacked: true }, y: { stacked: true } },
-                plugins: { title: { display: true, text: 'Zysk netto z inwestycji', color: '#fff' } }
+                scales: { 
+                    x: { ticks: { color: 'rgba(120, 120, 120, 0.8)' }, grid: { color: 'rgba(120, 120, 120, 0.2)' }, stacked: true },
+                    y: { ticks: { color: 'rgba(120, 120, 120, 0.8)' }, grid: { color: 'rgba(120, 120, 120, 0.2)' }, stacked: true },                
+                },
+                plugins: { 
+                    title: { display: true, text: 'Zysk netto z inwestycji'}, 
+                    legend: { 
+                        labels: {color: 'rgba(120, 120, 120, 0.8)' }
+                    }
+                },
             }
         });
     }
@@ -1187,26 +1649,47 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
                 responsive: true,
                 plugins: {
                     legend: { display: false }, 
-                    title: { display: true, text: 'Stopa zwrotu od depozytu (Skala Roku)', color: '#fff' },
+                    title: { display: true, text: 'Stopa zwrotu od depozytu (Skala Roku)'},
                     tooltip: { callbacks: { label: (ctx: any) => `${ctx.parsed.y.toFixed(2)} %` } }
                 },
+
                 scales: {
-                    y: { ticks: { callback: (val: any) => val + '%' } }
+                    x: { 
+                        ticks: { color: 'rgba(120, 120, 120, 0.8)' }, 
+                        grid: { color: 'rgba(120, 120, 120, 0.2)' } 
+                    },
+                    y: { 
+                        ticks: { 
+                            color: 'rgba(120, 120, 120, 0.8)', 
+                            // Dodanie drugiego parametru (index) upewnia TypeScript, że sygnatura jest właściwa
+                            callback: function(val: any, index: number) { 
+                                return val + '%'; 
+                            }
+                        }, 
+                        grid: { color: 'rgba(120, 120, 120, 0.2)' }  
+                    }                
                 }
+
             }
         });
     }
 }
 
 // --- 7. OBSŁUGA PORTFELA (AKTYWA) ---
+// --- 7. OBSŁUGA PORTFELA (AKTYWA) ---
 const modalAsset = document.getElementById('modal-asset') as HTMLDivElement;
-const assetTypeSelect = document.getElementById('asset-type') as HTMLSelectElement;
+const assetBrokerSelect = document.getElementById('asset-broker') as HTMLSelectElement;
 const assetCouponFields = document.getElementById('asset-coupon-fields') as HTMLDivElement;
 const assetNameInput = document.getElementById('asset-name') as HTMLInputElement;
 const assetPriceInput = document.getElementById('asset-price') as HTMLInputElement;
 
+// Pobieranie ceny Tickera (tylko gdy to konto Akcyjne)
 assetNameInput?.addEventListener('change', async () => {
-    if (assetTypeSelect.value === 'Akcje') {
+    const brokerName = assetBrokerSelect.value;
+    const brokerObj = userBrokers.find((b: any) => b.name === brokerName);
+    const realType = brokerObj ? brokerObj.type : brokerName;
+
+    if (realType === 'Akcje') {
         const ticker = assetNameInput.value.trim().toUpperCase();
         if (ticker) {
             assetPriceInput.placeholder = "Pobieranie...";
@@ -1223,32 +1706,46 @@ assetNameInput?.addEventListener('change', async () => {
 
 document.getElementById('btn-new-bond')?.addEventListener('click', () => {
     (document.getElementById('asset-date') as HTMLInputElement).valueAsDate = new Date();
-    if(assetTypeSelect) assetTypeSelect.value = 'Obligacje skarbowe';
-    if(assetCouponFields) assetCouponFields.style.display = 'none';
+    if (assetBrokerSelect) {
+        // Szukamy domyślnego brokera od obligacji, żeby go od razu zaznaczyć w modalu
+        const bondBroker = userBrokers.find((b: any) => b.type.includes('Obligacje'));
+        if (bondBroker) assetBrokerSelect.value = bondBroker.name;
+        assetBrokerSelect.dispatchEvent(new Event('change')); // Wymuszamy sprawdzenie, czy pokazać kupony
+    }
     modalAsset?.classList.remove('hidden');
 });
 
 document.getElementById('btn-new-stock')?.addEventListener('click', () => {
     (document.getElementById('asset-date') as HTMLInputElement).valueAsDate = new Date();
-    if(assetTypeSelect) assetTypeSelect.value = 'Akcje';
-    if(assetCouponFields) assetCouponFields.style.display = 'none';
+    if (assetBrokerSelect) {
+        // Szukamy domyślnego brokera od akcji
+        const stockBroker = userBrokers.find((b: any) => b.type === 'Akcje');
+        if (stockBroker) assetBrokerSelect.value = stockBroker.name;
+        assetBrokerSelect.dispatchEvent(new Event('change'));
+    }
     modalAsset?.classList.remove('hidden');
 });
 
 document.getElementById('btn-cancel-asset')?.addEventListener('click', () => modalAsset?.classList.add('hidden'));
 
-assetTypeSelect?.addEventListener('change', () => {
-    if (assetTypeSelect.value === 'Obligacje korporacyjne') {
+// Dynamiczne wyświetlanie pól kuponowych w zależności od typu wybranego Brokera
+assetBrokerSelect?.addEventListener('change', () => {
+    const brokerName = assetBrokerSelect.value;
+    const brokerObj = userBrokers.find((b: any) => b.name === brokerName);
+    const realType = brokerObj ? brokerObj.type : '';
+
+    if (realType === 'Obligacje korporacyjne i zagraniczne' || realType === 'Obligacje korporacyjne') {
         if(assetCouponFields) assetCouponFields.style.display = 'block';
     } else {
         if(assetCouponFields) assetCouponFields.style.display = 'none';
     }
 });
 
+// Zapis aktywa (W pole TYPE leci NAZWA BROKERA)
 document.getElementById('btn-save-asset')?.addEventListener('click', async () => {
     const asset = {
         name: (document.getElementById('asset-name') as HTMLInputElement).value,
-        type: assetTypeSelect.value,
+        type: assetBrokerSelect.value, // <--- Teraz tu idzie np. 'Revolut'
         purchase_date: (document.getElementById('asset-date') as HTMLInputElement).value,
         price: parseFloat((document.getElementById('asset-price') as HTMLInputElement).value) || 0,
         quantity: parseFloat((document.getElementById('asset-quantity') as HTMLInputElement).value) || 0,
@@ -1275,14 +1772,19 @@ async function loadAssetsData() {
 
     assets.forEach((a: any) => {
         const totalValue = a.price * a.quantity;
-        const couponInfo = a.type === 'Obligacje korporacyjne' && a.coupon_rate 
+        
+        // TŁUMACZENIE BROKERA NA TYP
+        const brokerObj = userBrokers.find((b:any) => b.name === a.type);
+        const realType = brokerObj ? brokerObj.type : a.type; // fallback dla starych rekordów
+
+        const couponInfo = (realType === 'Obligacje korporacyjne i zagraniczne' || realType === 'Obligacje korporacyjne') && a.coupon_rate 
             ? `${a.coupon_rate}% (${a.coupon_freq})<br><small>Wypłata: ${a.coupon_date}</small>` 
             : '-';
 
         const rowHTML = `
             <tr>
                 <td><strong>${a.name}</strong></td>
-                <td>${a.type}</td>
+                <td>${a.type} <br><small style="color:#aaa;">(${realType})</small></td>
                 <td>${a.purchase_date}</td>
                 <td>${a.quantity} szt. <br><small>po ${a.price.toFixed(2)}</small></td>
                 <td style="color: #4CAF50; font-weight: bold;">${totalValue.toFixed(2)} zł</td>
@@ -1294,11 +1796,11 @@ async function loadAssetsData() {
             </tr>
         `;
 
-        if (a.type.includes('Obligacje')) {
-            bondsData.push({ name: a.name, value: totalValue, type: a.type });
+        if (realType.includes('Obligacje')) {
+            bondsData.push({ name: a.name, value: totalValue, type: realType });
             if (tbodyBonds) tbodyBonds.innerHTML += rowHTML;
         } else {
-            stocksData.push({ name: a.name, value: totalValue, type: a.type });
+            stocksData.push({ name: a.name, value: totalValue, type: realType });
             if (tbodyStocks) tbodyStocks.innerHTML += rowHTML;
         }
     });
@@ -1667,9 +2169,14 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
     `;
 
     const assets = await (window as any).api.getAssets();
+
     const ownedTickers = new Set(
         assets
-            .filter((a: any) => a.type === 'Akcje')
+            .filter((a: any) => {
+                const brokerObj = userBrokers.find((b: any) => b.name === a.type);
+                const realType = brokerObj ? brokerObj.type : a.type;
+                return realType === 'Akcje';
+            })
             .map((a: any) => a.name.trim().toUpperCase())
     );
 
@@ -1886,12 +2393,7 @@ document.getElementById('watchlist-tbody')?.addEventListener('click', async (e) 
     }
 });
 
-document.querySelector('[data-target="watchlist"]')?.addEventListener('click', () => {
-    if(typeof (window as any).loadWatchlistData === 'function') {
-        (window as any).loadWatchlistData();
-    }
-    document.querySelector('[data-target="portfolio-stocks"]')?.classList.add('active');
-});
+
 
 // START
 loadData();

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell} from 'electron';
 import * as path from 'path';
-import { initDB, addDeposit, getDeposits, addProfit, getProfits, addAsset, getAssets, updateAssetQuantity, deleteAsset, addJournalEntry, getJournalEntries, deleteJournalEntry, updateJournalEntry, addWatchlistTicker, getWatchlist, deleteWatchlistTicker, deleteDeposit, updateDeposit} from './database';
+import { initDB, addDeposit, getDeposits, addProfit, getProfits, addAsset, getAssets, updateAssetQuantity, deleteAsset, addJournalEntry, getJournalEntries, deleteJournalEntry, updateJournalEntry, addWatchlistTicker, getWatchlist, deleteWatchlistTicker, deleteDeposit, updateDeposit, updateProfit, deleteProfit} from './database';
 
 const yfModule = require('yahoo-finance2');
 const YahooFinanceClass = yfModule.default || yfModule;
@@ -131,4 +131,13 @@ ipcMain.handle('delete-deposit', async (event, id) => {
 // AKTUALIZACJA (EDYCJA) WPŁATY
 ipcMain.handle('update-deposit', async (event, id, deposit) => {
     return await updateDeposit(id, deposit);
+});
+
+// USUWANIE I EDYCJA ZYSKÓW
+ipcMain.handle('delete-profit', async (event, id) => {
+    return await deleteProfit(id);
+});
+
+ipcMain.handle('update-profit', async (event, id, profit) => {
+    return await updateProfit(id, profit);
 });

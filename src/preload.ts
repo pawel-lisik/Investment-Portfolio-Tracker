@@ -22,4 +22,6 @@ contextBridge.exposeInMainWorld('api', {
     openExternal: (url: string) => ipcRenderer.send('open-external', url),
     updateDeposit: (id: number, deposit: any) => ipcRenderer.invoke('update-deposit', id, deposit),
     deleteDeposit: (id: number) => ipcRenderer.invoke('delete-deposit', id),
+    updateProfit: (id: number, profit: any) => ipcRenderer.invoke('update-profit', id, profit),
+    deleteProfit: (id: number) => ipcRenderer.invoke('delete-profit', id)
 });
