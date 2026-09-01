@@ -17,6 +17,11 @@ export function initDB() {
             destination TEXT
         )`);
 
+        // NOWE: Magia migracji dodająca kolumnę waluty docelowej do starszych baz!
+        db.run(`ALTER TABLE deposits ADD COLUMN target_currency TEXT DEFAULT NULL`, (err) => {
+            // Ignorujemy błąd, jeśli kolumna już istnieje
+        });
+
         db.run(`CREATE TABLE IF NOT EXISTS assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
@@ -28,6 +33,16 @@ export function initDB() {
             coupon_rate REAL,
             coupon_freq TEXT
         )`);        
+
+        // MAGIA MIGRACJI: Próbujemy dodać nową kolumnę 'currency' do istniejącej tabeli.
+        // Jeśli tabela jest nowa, lub jeśli kolumna już tam jest, skrypt po prostu cicho zignoruje błąd.
+        // Wszystkie stare rekordy dostaną domyślną wartość 'PLN'!
+        db.run(`ALTER TABLE assets ADD COLUMN currency TEXT DEFAULT 'PLN'`, (err) => {
+            if (err) {
+                // To normalne! Oznacza, że kolumna już istnieje, więc nic nie musimy robić.
+                // console.log("Kolumna currency już istnieje w assets");
+            }
+        });
 
         db.run(`CREATE TABLE IF NOT EXISTS profits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,17 +67,17 @@ export function initDB() {
         )`);
 
         db.run(`CREATE TABLE IF NOT EXISTS watchlist (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ticker TEXT UNIQUE,
-                    date_added TEXT
-                )`);
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT UNIQUE,
+            date_added TEXT
+        )`);
     });
 }
 
 export const addDeposit = (deposit: any): Promise<number> => {
     return new Promise((resolve, reject) => {
-        const stmt = db.prepare(`INSERT INTO deposits (date, amount, currency, exchange_rate, amount_pln, destination) VALUES (?, ?, ?, ?, ?, ?)`);
-        stmt.run([deposit.date, deposit.amount, deposit.currency, deposit.exchange_rate, deposit.amount_pln, deposit.destination], function(err) {
+        const stmt = db.prepare(`INSERT INTO deposits (date, amount, currency, exchange_rate, amount_pln, target_currency, destination) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+        stmt.run([deposit.date, deposit.amount, deposit.currency, deposit.exchange_rate, deposit.amount_pln, deposit.target_currency, deposit.destination], function(err) {
             if (err) reject(err);
             else resolve(this.lastID);
         });
@@ -99,8 +114,13 @@ export const getProfits = (): Promise<any[]> => {
 
 export const addAsset = (asset: any): Promise<number> => {
     return new Promise((resolve, reject) => {
-        const stmt = db.prepare(`INSERT INTO assets (name, type, purchase_date, price, quantity, coupon_date, coupon_rate, coupon_freq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-        stmt.run([asset.name, asset.type, asset.purchase_date, asset.price, asset.quantity, asset.coupon_date, asset.coupon_rate, asset.coupon_freq], function(err) {
+        // Dodaliśmy 'currency' do listy VALUES
+        const stmt = db.prepare(`INSERT INTO assets (name, type, purchase_date, price, quantity, coupon_date, coupon_rate, coupon_freq, currency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        
+        // Zabezpieczenie: jeśli z interfejsu przyjdzie pusty string waluty, wymuś 'PLN'
+        const safeCurrency = asset.currency ? asset.currency : 'PLN';
+        
+        stmt.run([asset.name, asset.type, asset.purchase_date, asset.price, asset.quantity, asset.coupon_date, asset.coupon_rate, asset.coupon_freq, safeCurrency], function(err) {
             if (err) reject(err); else resolve(this.lastID);
         });
     });
@@ -204,9 +224,9 @@ export const updateDeposit = (id: number, deposit: any) => {
     return new Promise((resolve, reject) => {
         db.run(
             `UPDATE deposits 
-             SET date = ?, amount = ?, currency = ?, exchange_rate = ?, amount_pln = ?, destination = ? 
+             SET date = ?, amount = ?, currency = ?, exchange_rate = ?, amount_pln = ?, target_currency = ?, destination = ? 
              WHERE id = ?`,
-            [deposit.date, deposit.amount, deposit.currency, deposit.exchange_rate, deposit.amount_pln, deposit.destination, id],
+            [deposit.date, deposit.amount, deposit.currency, deposit.exchange_rate, deposit.amount_pln, deposit.target_currency, deposit.destination, id],
             function(err) {
                 if (err) reject(err);
                 else resolve(this.changes);

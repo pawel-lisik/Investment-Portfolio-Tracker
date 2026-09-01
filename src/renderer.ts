@@ -122,6 +122,27 @@ navBtns.forEach(btn => {
     });
 });
 
+// Funkcja magiczna do kuponów: szuka kursu z DNI POPRZEDZAJĄCEGO (T-1) omijając weekendy
+async function getNbpRateForPreviousBusinessDay(currency: string, targetDateStr: string): Promise<number> {
+    if (currency === 'PLN' || !currency) return 1.0;
+    
+    let dateObj = new Date(targetDateStr);
+    dateObj.setDate(dateObj.getDate() - 1); // Od razu cofamy o 1 dzień (wymóg prawny T-1)
+
+    // Omijamy potencjalne puste dni NBP (weekendy, święta państwowe)
+    for (let i = 0; i < 5; i++) {
+        const dStr = dateObj.toISOString().split('T')[0];
+        try {
+            const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${currency}/${dStr}?format=json`);
+            if (res.ok) {
+                const data = await res.json();
+                return data.rates[0].mid; // Zwracamy prawidłowy kurs T-1
+            }
+        } catch (e) {}
+        dateObj.setDate(dateObj.getDate() - 1); // Cofamy o kolejny dzień jeśli serwer NBP zwrócił błąd/404
+    }
+    return 1.0; // Ostateczny fallback w przypadku braku sieci
+}
 
 // --- 2. ZDARZENIA DOM (KLIKALNE KAFELKI I WIDOKI) ---
 const modalSettings = document.getElementById('modal-settings') as HTMLDivElement;
@@ -164,11 +185,16 @@ function renderSettingsBrokers() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-
+    // --- 1. DEKLARACJE ZMIENNYCH (tylko raz!) ---
     const btnSettings = document.getElementById('btn-settings');
     const btnCloseSettings = document.getElementById('btn-close-settings');
     const selectPortfolioType = document.getElementById('setting-portfolio-type') as HTMLSelectElement;
     const brokersListContainer = document.getElementById('setting-brokers-list');
+
+    // FMP API
+    const inputFmpApiKey = document.getElementById('setting-fmp-api-key') as HTMLInputElement;
+    const fmpToggle = document.getElementById('setting-fmp-toggle') as HTMLInputElement;
+    const apiKeyContainer = document.getElementById('fmp-api-key-container');
 
     // Elementy nowego, małego okienka
     const modalAddBroker = document.getElementById('modal-add-broker') as HTMLDivElement;
@@ -180,12 +206,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- OBSŁUGA LISTY ROZWIJANEJ MOTYWU W USTAWIENIACH ---
     const selectTheme = document.getElementById('setting-theme') as HTMLSelectElement;
-    
     if (selectTheme) {
-        // Ustaw wartość selecta na tę wyciągniętą z pamięci
         selectTheme.value = localStorage.getItem('appTheme') || 'system';
-        
-        // Zmień motyw i zapisz go w pamięci po zmianie opcji
         selectTheme.addEventListener('change', () => {
             const newTheme = selectTheme.value;
             localStorage.setItem('appTheme', newTheme);
@@ -193,12 +215,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- OBSŁUGA FMP API I GŁÓWNYCH USTAWIEŃ ---
+    
+    // Reakcja na kliknięcie suwaka FMP
+    fmpToggle?.addEventListener('change', () => {
+        localStorage.setItem('fmpEnabled', fmpToggle.checked.toString());
+        // Ukryj/pokaż pole na klucz
+        if (apiKeyContainer) apiKeyContainer.style.display = fmpToggle.checked ? 'block' : 'none';
+        // Odśwież watchlistę w tle, aby dodać/usunąć kolumny
+        if(typeof (window as any).loadWatchlistData === 'function') {
+            (window as any).loadWatchlistData();
+        }
+    });
+
+    // Zapisywanie klucza FMP
+    inputFmpApiKey?.addEventListener('input', () => {
+        localStorage.setItem('fmpApiKey', inputFmpApiKey.value.trim());
+    });
+    inputFmpApiKey?.addEventListener('change', () => {
+        localStorage.setItem('fmpApiKey', inputFmpApiKey.value.trim());
+    });
+
+    // Otwieranie głównych ustawień
     btnSettings?.addEventListener('click', () => {
         if (selectPortfolioType) selectPortfolioType.value = userPortfolioThreshold.toString();
+        
+        // Ładowanie zapisanych danych FMP po otwarciu okienka
+        if (inputFmpApiKey) inputFmpApiKey.value = localStorage.getItem('fmpApiKey') || ''; 
+        if (fmpToggle) fmpToggle.checked = localStorage.getItem('fmpEnabled') === 'true';
+        if (apiKeyContainer) apiKeyContainer.style.display = fmpToggle?.checked ? 'block' : 'none';
+        
         renderSettingsBrokers();
         modalSettings?.classList.remove('hidden');
     });
 
+    // Zamykanie głównych ustawień
     btnCloseSettings?.addEventListener('click', () => {
         modalSettings?.classList.add('hidden');
     });
@@ -206,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
     selectPortfolioType?.addEventListener('change', () => {
         userPortfolioThreshold = parseInt(selectPortfolioType.value);
         localStorage.setItem('userPortfolioThreshold', userPortfolioThreshold.toString());
-        loadData(); 
+        if(typeof loadData === 'function') loadData(); 
     });
 
     // --- LOGIKA NOWEGO MODALA DO DODAWANIA ---
@@ -261,6 +312,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector<HTMLElement>('[data-target="taxes"]')?.click();
     });
 
+    document.getElementById('btn-back-to-profits-2')?.addEventListener('click', () => {
+    document.querySelector<HTMLElement>('[data-target="taxes"]')?.click();
+    });
 
     document.querySelector('[data-target="watchlist"]')?.addEventListener('click', () => {
         if(typeof (window as any).loadWatchlistData === 'function') {
@@ -270,6 +324,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.querySelector('[data-target="profits-list"]')?.addEventListener('click', () => {
+        document.querySelector('[data-target="taxes"]')?.classList.add('active');
+    });
+
+    document.querySelector('[data-target="calculator"]')?.addEventListener('click', () => {
         document.querySelector('[data-target="taxes"]')?.classList.add('active');
     });
 
@@ -430,15 +488,16 @@ btnExportCsv?.addEventListener('click', () => {
 
     // Dodajemy nagłówki, zachowując 4 pierwsze kolumny tak, by pasowały do Importu.
     // Dodajemy też 2 dodatkowe kolumny (Kurs NBP i Wartość PLN) dla celów archiwalnych.
-    let csvContent = "Data;Kwota;Waluta;Konto;Kurs NBP;Wartosc PLN\n";
 
-    // Formatowanie polskich wartości z kropkami na przecinki (dla Excela)
+    let csvContent = "Data;Kwota;Waluta wpłaty;Waluta docelowa;Konto;Kurs NBP;Wartosc PLN\n";
+
     currentDeposits.forEach(d => {
         const amountStr = d.amount.toString().replace('.', ',');
         const rateStr = d.exchange_rate.toString().replace('.', ',');
         const plnStr = d.amount_pln.toString().replace('.', ',');
+        const targetStr = d.target_currency || '';
         
-        csvContent += `${d.date};${amountStr};${d.currency};${d.destination};${rateStr};${plnStr}\n`;
+        csvContent += `${d.date};${amountStr};${d.currency};${targetStr};${d.destination};${rateStr};${plnStr}\n`;
     });
 
     // Tworzenie pliku w pamięci przeglądarki z obsługą polskich znaków
@@ -492,23 +551,34 @@ csvImportInput?.addEventListener('change', async (e) => {
         const separator = line.includes(';') ? ';' : ',';
         const parts = line.split(separator).map(p => p.trim());
         
-        if (parts.length >= 4) {
+
+        // PKO BP używa domyślnie 5 kolumn z docelową walutą włącznie
+        if (parts.length >= 5) {
             const date = parts[0];
-            // Pomijamy nagłówki lub błędne rzędy
             if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) continue; 
             
-            const amount = parseFloat(parts[1].replace(',', '.'));
+            const amount = parseFloat(parts[1].replace(/\s/g, '').replace(',', '.'));
             const currency = parts[2].toUpperCase();
-            const destination = parts[3];
+            
+            // Kolumna 4 (indeks 3) to waluta docelowa, kolumna 5 to konto
+            const targetCurrency = parts[3].trim().toUpperCase() || null;
+            const destination = parts[4].trim();
             
             if (!isNaN(amount) && date) {
-                const rate = await getHistoricalRateForImport(currency, date);
+                let rateCurrency = currency;
+                if (currency === 'PLN' && targetCurrency && targetCurrency !== 'PLN') {
+                    rateCurrency = targetCurrency;
+                }
+                const rate = await getHistoricalRateForImport(rateCurrency, date);
+                const amountPln = currency === 'PLN' ? amount : amount * rate;
+                
                 const deposit = {
                     date: date,
                     amount: amount,
                     currency: currency,
                     exchange_rate: rate,
-                    amount_pln: amount * rate,
+                    amount_pln: amountPln,
+                    target_currency: targetCurrency,
                     destination: destination
                 };
                 await (window as any).api.addDeposit(deposit);
@@ -540,8 +610,9 @@ document.getElementById('btn-cancel-deposit')?.addEventListener('click', () => m
 // --- FUNKCJA OBSŁUGUJĄCA DYNAMICZNE OSTRZEŻENIA W ZYSKACH ---
 function updateProfitWarning() {
     const warningEl = document.getElementById('prof-warning');
+    const warningTax = document.getElementById('tax-warning');
     const brokerSelect = document.getElementById('prof-broker') as HTMLSelectElement;
-    if (!warningEl || !brokerSelect) return;
+    if (!warningEl || !brokerSelect || !warningTax) return;
 
     const selectedBrokerName = brokerSelect.value;
     const brokerObj = userBrokers.find((b: any) => b.name === selectedBrokerName);
@@ -550,14 +621,23 @@ function updateProfitWarning() {
         if (brokerObj.type === 'Obligacje skarbowe krajowe') {
             warningEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> Pamiętaj, aby w końcowej kwocie uwzględnić zamianę obligacji i wykup obligacji, które zapadły.';
             warningEl.style.display = 'block';
+
+            warningTax.innerHTML = '<i class="fa-solid fa-circle-info"></i> Aby podatek nie został naliczony w automatycznym dodawaniu kuponu, upewnij się, że w nazwie konta znajduje się <i>IKE</i>, <i>IKZE</i>, <i>OKI</i> lub <i>OIPE</i>.';
+            warningTax.style.display = 'block';
+
         } else if (brokerObj.type === 'Obligacje korporacyjne i zagraniczne') {
             warningEl.innerHTML = '<i class="fa-solid fa-circle-info"></i> Pamiętaj, aby w zyskach uwzględnić opłaty transakcyjne i ewentualne straty (różnice w cenie kupna i sprzedaży obligacji).';
             warningEl.style.display = 'block';
+
+            warningTax.innerHTML = '<i class="fa-solid fa-circle-info"></i> Aby podatek nie został naliczony w automatycznym dodawaniu kuponu, upewnij się, że w nazwie konta znajduje się <i>IKE</i>, <i>IKZE</i>, <i>OKI</i> lub <i>OIPE</i>.';
+            warningTax.style.display = 'block';
         } else {
             warningEl.style.display = 'none';
+            warningTax.style.display ='none';
         }
     } else {
         warningEl.style.display = 'none';
+        warningTax.style.display ='none';
     }
 }
 
@@ -633,20 +713,26 @@ pkoImportFile?.addEventListener('change', async (e) => {
         }
     }
     
+
     if (count > 0) {
-        // ODLICZANIE PODATKU BELKI (Kwota brutto * 0.81 = Kwota netto)
-        const netProfit = totalGross * 0.81; 
+        const selectedBrokerName = (document.getElementById('prof-broker') as HTMLSelectElement).value;
+        const upperBroker = selectedBrokerName.toUpperCase();
+        
+        // NOWE: Sprawdzamy czy nazwa konta sugeruje brak podatku Belki
+        const isTaxFree = upperBroker.includes('IKE') || upperBroker.includes('IKZE') || upperBroker.includes('OKI') || upperBroker.includes('OIPE');
+        
+        const taxMultiplier = isTaxFree ? 1.0 : 0.81;
+        const netProfit = totalGross * taxMultiplier; 
         
         const profAmount = document.getElementById('prof-amount') as HTMLInputElement;
         const profTax = document.getElementById('prof-tax') as HTMLInputElement;
         const profCat = document.getElementById('prof-cat') as HTMLSelectElement;
         
-        // Automatyczne wypełnianie okienka:
         if (profAmount) profAmount.value = netProfit.toFixed(2);
-        if (profTax) profTax.value = 'Pobrany';
+        if (profTax) profTax.value = isTaxFree ? '0.00' : 'Pobrany';
         if (profCat) profCat.value = 'Kupony';
         
-        alert(`Znaleziono ${count} operacji typu "naliczenie odsetek".\n\nSuma brutto: ${totalGross.toFixed(2)} zł\nTwój zysk netto po potrąceniu podatku: ${netProfit.toFixed(2)} zł.\n\nFormularz został wypełniony automatycznie!`);
+        alert(`Znaleziono ${count} operacji typu "naliczenie odsetek".\n\nSuma brutto: ${totalGross.toFixed(2)} zł\n${isTaxFree ? 'Zastosowano zwolnienie z podatku (IKE/IKZE).' : 'Potrącono podatek 19%.'}\nTwój zysk netto: ${netProfit.toFixed(2)} zł.`);
     } else {
         alert("W wybranym pliku nie znaleziono operacji typu 'naliczenie odsetek'. Upewnij się, że wgrywasz poprawny plik z Historii Dyspozycji PKO.");
     }
@@ -681,11 +767,23 @@ document.getElementById('btn-cancel-profit')?.addEventListener('click', () => mo
 
 
 // --- 4. OBSŁUGA WALUT I NBP ---
+// --- OBSŁUGA WALUT, NBP I PRZEWALUTOWAŃ ---
 const depCurrency = document.getElementById('dep-currency') as HTMLSelectElement;
 const depAmount = document.getElementById('dep-amount') as HTMLInputElement;
 const depDate = document.getElementById('dep-date') as HTMLInputElement;
 const depRateInfo = document.getElementById('dep-rate-info') as HTMLDivElement;
+const depIsConvCheckbox = document.getElementById('dep-is-conversion') as HTMLInputElement;
+const depTargetGroup = document.getElementById('dep-target-currency-group');
+const depTargetSelect = document.getElementById('dep-target-currency') as HTMLSelectElement;
+
 let currentRate = 1.0;
+
+// Pokazywanie/ukrywanie pola waluty docelowej
+depIsConvCheckbox?.addEventListener('change', () => {
+    if (depTargetGroup) depTargetGroup.style.display = depIsConvCheckbox.checked ? 'block' : 'none';
+    updateRate();
+});
+depTargetSelect?.addEventListener('change', updateRate);
 
 async function updateRate() {
     if (!depCurrency || !depAmount || !depRateInfo || !depDate) return;
@@ -693,7 +791,14 @@ async function updateRate() {
     const amount = parseFloat(depAmount.value) || 0;
     const selectedDate = depDate.value; 
     
-    if (currency === 'PLN') {
+    // Ustalanie waluty bazowej do pobrania kursu z NBP 
+    // (Jeśli wpłacamy PLN, ale docelowo kupujemy USD, musimy znać kurs USD!)
+    let rateCurrency = currency;
+    if (currency === 'PLN' && depIsConvCheckbox?.checked && depTargetSelect?.value && depTargetSelect.value !== 'PLN') {
+        rateCurrency = depTargetSelect.value;
+    }
+    
+    if (rateCurrency === 'PLN') {
         currentRate = 1.0;
         depRateInfo.innerText = '';
         return;
@@ -714,7 +819,7 @@ async function updateRate() {
     for (let i = 0; i < 5; i++) {
         const dStr = dateObj.toISOString().split('T')[0];
         try {
-            const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${currency}/${dStr}?format=json`);
+            const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${rateCurrency}/${dStr}?format=json`);
             if (res.ok) {
                 const data = await res.json();
                 foundRate = data.rates[0].mid;
@@ -727,7 +832,8 @@ async function updateRate() {
 
     if (foundRate !== null) {
         currentRate = foundRate;
-        depRateInfo.innerText = `Kurs NBP z ${rateDate}: ${currentRate.toFixed(4)} PLN. Przeliczono na: ${(amount * currentRate).toFixed(2)} PLN`;
+        const plnVal = currency === 'PLN' ? amount : amount * currentRate;
+        depRateInfo.innerText = `Kurs NBP z ${rateDate}: ${currentRate.toFixed(4)} PLN. Przeliczono na: ${plnVal.toFixed(2)} PLN`;
     } else {
         depRateInfo.innerText = 'Nie udało się pobrać kursu historycznego NBP. Użyto przelicznika 1:1.';
         currentRate = 1.0;
@@ -737,6 +843,35 @@ async function updateRate() {
 depCurrency?.addEventListener('change', updateRate);
 depAmount?.addEventListener('input', updateRate);
 depDate?.addEventListener('change', updateRate);
+
+
+// --- ZAPIS WPŁATY ---
+document.getElementById('btn-save-deposit')?.addEventListener('click', async () => {
+    const amount = parseFloat(depAmount?.value) || 0;
+    const isConv = depIsConvCheckbox?.checked;
+    const targetCurr = isConv ? depTargetSelect?.value : null;
+
+    const deposit = {
+        date: (document.getElementById('dep-date') as HTMLInputElement).value,
+        amount: amount,
+        currency: depCurrency.value,
+        exchange_rate: currentRate,
+        amount_pln: depCurrency.value === 'PLN' ? amount : amount * currentRate, // Bezpieczne liczenie
+        target_currency: targetCurr, // NOWE: Przekazujemy do bazy danych
+        destination: (document.getElementById('dep-dest') as HTMLSelectElement).value
+    };
+
+    const idStr = (document.getElementById('dep-id') as HTMLInputElement).value;
+
+    if (idStr) {
+        await (window as any).api.updateDeposit(parseInt(idStr), deposit);
+    } else {
+        await (window as any).api.addDeposit(deposit);
+    }
+
+    modalDeposit?.classList.add('hidden');
+    loadData();
+});
 
 // ZAPIS WPŁAT (I EDYCJA)
 
@@ -759,7 +894,20 @@ const transferCurrency = document.getElementById('transfer-currency') as HTMLSel
 const transferAmount = document.getElementById('transfer-amount') as HTMLInputElement;
 const transferDate = document.getElementById('transfer-date') as HTMLInputElement;
 const transferRateInfo = document.getElementById('transfer-rate-info') as HTMLDivElement;
+
+// NOWE: Elementy przewalutowania w transferze
+const transferIsConvCheckbox = document.getElementById('transfer-is-conversion') as HTMLInputElement;
+const transferTargetGroup = document.getElementById('transfer-target-currency-group');
+const transferTargetSelect = document.getElementById('transfer-target-currency') as HTMLSelectElement;
+
 let currentTransferRate = 1.0;
+
+// Pokazywanie/ukrywanie pola waluty docelowej w transferze
+transferIsConvCheckbox?.addEventListener('change', () => {
+    if (transferTargetGroup) transferTargetGroup.style.display = transferIsConvCheckbox.checked ? 'block' : 'none';
+    updateTransferRate();
+});
+transferTargetSelect?.addEventListener('change', updateTransferRate);
 
 async function updateTransferRate() {
     if (!transferCurrency || !transferAmount || !transferRateInfo || !transferDate) return;
@@ -767,7 +915,13 @@ async function updateTransferRate() {
     const amount = parseFloat(transferAmount.value) || 0;
     const selectedDate = transferDate.value; 
     
-    if (currency === 'PLN') {
+    // Inteligentne dobranie waluty do kursu NBP
+    let rateCurrency = currency;
+    if (currency === 'PLN' && transferIsConvCheckbox?.checked && transferTargetSelect?.value && transferTargetSelect.value !== 'PLN') {
+        rateCurrency = transferTargetSelect.value;
+    }
+
+    if (rateCurrency === 'PLN') {
         currentTransferRate = 1.0;
         transferRateInfo.innerText = '';
         return;
@@ -787,7 +941,7 @@ async function updateTransferRate() {
     for (let i = 0; i < 5; i++) {
         const dStr = dateObj.toISOString().split('T')[0];
         try {
-            const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${currency}/${dStr}?format=json`);
+            const res = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${rateCurrency}/${dStr}?format=json`);
             if (res.ok) {
                 const data = await res.json();
                 foundRate = data.rates[0].mid;
@@ -800,7 +954,8 @@ async function updateTransferRate() {
 
     if (foundRate !== null) {
         currentTransferRate = foundRate;
-        transferRateInfo.innerText = `Kurs NBP z ${rateDate}: ${currentTransferRate.toFixed(4)} PLN. Przeliczono na: ${(amount * currentTransferRate).toFixed(2)} PLN`;
+        const plnVal = currency === 'PLN' ? amount : amount * currentTransferRate;
+        transferRateInfo.innerText = `Kurs NBP z ${rateDate}: ${currentTransferRate.toFixed(4)} PLN. Przeliczono na: ${plnVal.toFixed(2)} PLN`;
     } else {
         transferRateInfo.innerText = 'Błąd pobierania kursu. Użyto 1:1.';
         currentTransferRate = 1.0;
@@ -828,24 +983,32 @@ document.getElementById('btn-save-transfer')?.addEventListener('click', async ()
 
     const date = transferDate.value;
     const currency = transferCurrency.value;
+    const isConv = transferIsConvCheckbox?.checked;
+    const targetCurr = isConv ? transferTargetSelect?.value : null;
+
+    const amountPln = currency === 'PLN' ? amount : amount * currentTransferRate;
 
     // 1. Tworzymy ujemny wpis (zabieramy ze źródła)
+    // Z konta źródłowego zawsze schodzą oryginalne środki, nie oznaczamy ich jako zakup (target_currency = null)
     const withdrawal = {
         date: date,
         amount: -amount,
         currency: currency,
         exchange_rate: currentTransferRate,
-        amount_pln: -amount * currentTransferRate,
+        amount_pln: -amountPln,
+        target_currency: null,
         destination: from
     };
 
     // 2. Tworzymy dodatni wpis (dodajemy do celu)
+    // Jeśli użyto przewalutowania, do bazy wejdzie docelowa waluta, co odczytają statystyki
     const deposit = {
         date: date,
         amount: amount,
         currency: currency,
         exchange_rate: currentTransferRate,
-        amount_pln: amount * currentTransferRate,
+        amount_pln: amountPln,
+        target_currency: targetCurr,
         destination: to
     };
 
@@ -856,7 +1019,6 @@ document.getElementById('btn-save-transfer')?.addEventListener('click', async ()
     modalTransfer?.classList.add('hidden');
     loadData(); // Odświeżamy widok!
 });
-
 
 document.getElementById('btn-save-deposit')?.addEventListener('click', async () => {
     const amount = parseFloat(depAmount?.value) || 0;
@@ -915,11 +1077,22 @@ document.getElementById('deposits-tbody')?.addEventListener('click', async (e) =
             const title = document.getElementById('modal-dep-title');
             if (title) title.innerText = 'Edytuj Wpłatę';
 
+
             (document.getElementById('dep-id') as HTMLInputElement).value = dep.id.toString();
             (document.getElementById('dep-date') as HTMLInputElement).value = dep.date;
             (document.getElementById('dep-amount') as HTMLInputElement).value = dep.amount.toString();
             (document.getElementById('dep-currency') as HTMLSelectElement).value = dep.currency;
             (document.getElementById('dep-dest') as HTMLSelectElement).value = dep.destination;
+
+            // Wypełnianie checkboxa przewalutowania
+            if (dep.target_currency) {
+                depIsConvCheckbox.checked = true;
+                depTargetSelect.value = dep.target_currency;
+                if (depTargetGroup) depTargetGroup.style.display = 'block';
+            } else {
+                depIsConvCheckbox.checked = false;
+                if (depTargetGroup) depTargetGroup.style.display = 'none';
+            }
 
             updateRate();
             modalDeposit?.classList.remove('hidden');
@@ -932,15 +1105,30 @@ document.getElementById('profits-list-tbody')?.addEventListener('click', async (
     const target = e.target as HTMLElement;
     const editBtn = target.closest('.btn-edit-profit');
     const deleteBtn = target.closest('.btn-delete-profit');
+    
+    // Nowe przyciski suwaka
+    const moreBtn = target.closest('.btn-more-profit');
+    const closeBtn = target.closest('.btn-close-slider-profit');
 
-    if (deleteBtn) {
+    if (moreBtn) {
+        // Po kliknięciu kropek włączamy przesunięcie
+        const id = moreBtn.getAttribute('data-id');
+        const slider = document.getElementById(`slider-profit-${id}`);
+        if (slider) slider.style.transform = 'translateX(-50%)'; 
+    }
+    else if (closeBtn) {
+        // Po kliknięciu "x" cofamy przesunięcie do stanu początkowego
+        const id = closeBtn.getAttribute('data-id');
+        const slider = document.getElementById(`slider-profit-${id}`);
+        if (slider) slider.style.transform = 'translateX(0)'; 
+    }
+    else if (deleteBtn) {
         const id = parseInt(deleteBtn.getAttribute('data-id')!);
         if (confirm("Czy na pewno chcesz usunąć ten zysk z historii?")) {
             await (window as any).api.deleteProfit(id);
             loadData();
         }
     } 
-
     else if (editBtn) {
         const id = parseInt(editBtn.getAttribute('data-id')!);
         const p = currentProfits.find(x => x.id === id);
@@ -968,7 +1156,56 @@ document.getElementById('profits-list-tbody')?.addEventListener('click', async (
 
 
 // --- 5. GŁÓWNA LOGIKA ŁADOWANIA DANYCH ---
-// --- 5. GŁÓWNA LOGIKA ŁADOWANIA DANYCH ---
+// --- FUNKCJA SYNCHRONIZUJĄCA WYNIKI S&P 500 ---
+async function syncSP500() {
+    const apiKey = localStorage.getItem('fmpApiKey');
+    if (!apiKey) return; // Jeśli użytkownik nie podał klucza, pomijamy
+    
+    // Sprawdzamy czy pobieraliśmy dane dzisiaj (żeby nie marnować limitu API)
+    const today = new Date().toISOString().split('T')[0];
+    if (localStorage.getItem('sp500LastFetch') === today) return; 
+
+    try {
+        // Pobieramy całą historię cen ETF-a na S&P 500 (SPY)
+        const res = await fetch(`https://financialmodelingprep.com/api/v3/historical-price-full/SPY?apikey=${apiKey}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.historical) return;
+
+        // Awaryjna baza dla starych lat (API darmowe cofa zwykle o 5 lat)
+        const baseSP500 = {
+            '2018': -4.38, '2019': 31.49, '2020': 18.40, '2021': 28.71, '2022': -18.11
+        };
+        let sp500Returns: Record<string, number> = JSON.parse(localStorage.getItem('sp500Returns') || JSON.stringify(baseSP500));
+
+        const endOfYearPrices: Record<string, number> = {};
+        const history = data.historical.reverse(); // Odwracamy, by czytać od najstarszej do najnowszej
+        
+        // Zapisujemy cenę z ostatniego dnia handlowego każdego roku
+        history.forEach((day: any) => {
+            const year = day.date.substring(0, 4);
+            endOfYearPrices[year] = day.close; // Pętla nadpisuje wartość, aż dotrze do 31 grudnia danego roku (lub do dzisiaj)
+        });
+
+        // Obliczamy stopę zwrotu (Koniec Roku / Koniec Poprzedniego Roku - 1)
+        const years = Object.keys(endOfYearPrices).sort();
+        for (let i = 1; i < years.length; i++) {
+            const prevYear = years[i - 1];
+            const currYear = years[i];
+            const returnPct = ((endOfYearPrices[currYear] / endOfYearPrices[prevYear]) - 1) * 100;
+            
+            // Zapisujemy do słownika
+            sp500Returns[currYear] = parseFloat(returnPct.toFixed(2));
+        }
+
+        // Zapisujemy do lokalnej bazy
+        localStorage.setItem('sp500Returns', JSON.stringify(sp500Returns));
+        localStorage.setItem('sp500LastFetch', today);
+    } catch(e) {
+        console.error("Błąd aktualizacji S&P 500 z API:", e);
+    }
+}
+
 async function loadData() {
     const deposits = await (window as any).api.getDeposits();
     let profits = await (window as any).api.getProfits();
@@ -982,15 +1219,13 @@ async function loadData() {
     today.setHours(0, 0, 0, 0);
 
     for (const a of assets) {
-        // Tłumaczenie brokera na typ, żeby sprawdzić czy to obligacje
         const brokerObj = userBrokers.find((b: any) => b.name === a.type);
         const realType = brokerObj ? brokerObj.type : a.type;
 
-        // Interesują nas tylko te ze zdefiniowanym kuponem
         if (!realType.includes('Obligacje korporacyjne')) continue;
         if (!a.coupon_date || !a.coupon_rate || a.quantity <= 0) continue;
 
-        const nominal = 1000; // Domyślna wartość nominalna
+        const nominal = 1000;
         let payoutDate = new Date(a.coupon_date);
         payoutDate.setHours(0, 0, 0, 0);
         
@@ -999,28 +1234,24 @@ async function loadData() {
         
         const freqMonths = a.coupon_freq === 'Półroczna' ? 6 : 12;
 
-        // Przewijamy daty wypłat, aż znajdziemy pierwszą PO dacie zakupu
         while (payoutDate <= purchaseDate) {
             payoutDate.setMonth(payoutDate.getMonth() + freqMonths);
         }
 
         let isFirstCoupon = true;
-        // Unikalna nazwa kategorii, żeby program wiedział, że to z automatu
         const categoryName = `Kupony - ${a.name}`; 
 
         while (payoutDate <= today) {
             const payoutDateStr = payoutDate.toISOString().split('T')[0];
-            
-            // Sprawdzamy, czy w bazie JEST JUŻ wpis dla tego kuponu (zabezpieczenie przed dublowaniem)
             const alreadyExists = profits.some((p: any) => p.category === categoryName && p.date === payoutDateStr);
             
+
             if (!alreadyExists) {
+                const assetCurrency = a.currency || 'PLN';
                 const yearlyCoupon = nominal * a.quantity * (a.coupon_rate / 100);
                 const periodCoupon = freqMonths === 6 ? yearlyCoupon / 2 : yearlyCoupon;
-                let realProfitBrutto = periodCoupon;
+                let realProfitForeign = periodCoupon;
 
-                // Proporcjonalne pomniejszenie zysku z pierwszego kuponu 
-                // o czas, w którym nie byliśmy właścicielami
                 if (isFirstCoupon) {
                     const prevPayoutDate = new Date(payoutDate);
                     prevPayoutDate.setMonth(prevPayoutDate.getMonth() - freqMonths);
@@ -1029,19 +1260,25 @@ async function loadData() {
                     const daysHeld = Math.round((payoutDate.getTime() - purchaseDate.getTime()) / (1000 * 3600 * 24));
                     
                     if (daysHeld > 0 && daysHeld < totalDays) {
-                        realProfitBrutto = periodCoupon * (daysHeld / totalDays);
+                        realProfitForeign = periodCoupon * (daysHeld / totalDays);
                     }
                 }
 
-                const tax = realProfitBrutto * 0.19;
+                const exchangeRate = await getNbpRateForPreviousBusinessDay(assetCurrency, payoutDateStr);
+                const realProfitPln = realProfitForeign * exchangeRate;
+                
+                // NOWE: Sprawdzamy zwolnienie z podatku dla kuponów automatycznych (szukamy w nazwie konta/brokera)
+                const upperBroker = a.type.toUpperCase();
+                const isTaxFree = upperBroker.includes('IKE') || upperBroker.includes('IKZE') || upperBroker.includes('OKI') || upperBroker.includes('OIPE');
+                
+                const taxPln = isTaxFree ? 0 : realProfitPln * 0.19;
 
-                // TWARDY ZAPIS DO BAZY (Dzięki temu, nawet gdy zmienisz ilość jednostek za pół roku, ten wpis zostanie)
                 await (window as any).api.addProfit({
                     date: payoutDateStr,
                     broker: a.type,
                     category: categoryName,
-                    amount: realProfitBrutto,
-                    tax: tax
+                    amount: realProfitPln,
+                    tax: taxPln
                 });
                 newProfitsAdded = true;
             }
@@ -1051,29 +1288,25 @@ async function loadData() {
         }
     }
 
-    // Jeśli w locie dodaliśmy nowe kupony do bazy, pobieramy odświeżoną listę
     if (newProfitsAdded) {
         profits = await (window as any).api.getProfits();
     }
     // ========================================================
 
-    currentProfits = profits; // Aktualizacja zmiennej globalnej
+    currentProfits = profits;
 
-    // Renderowanie dolnej tabeli (Historia wprowadzonych zysków)
-// Renderowanie dolnej tabeli (Historia wprowadzonych zysków)
     const tbodyProfList = document.getElementById('profits-list-tbody');
     if (tbodyProfList) {
         tbodyProfList.innerHTML = '';
         [...profits].reverse().forEach((p: any) => { 
             const catDisplay = p.category.startsWith('Kupony') ? p.category : `<span style="text-transform: capitalize;">${p.category}</span>`;
             
-            // Sprawdzamy czy to obligacje skarbowe z wpisanym zerowym podatkiem
             const brokerObj = userBrokers.find((b: any) => b.name === p.broker);
             const isSkarbowe = brokerObj && brokerObj.type === 'Obligacje skarbowe krajowe';
             
             let taxDisplay = `${p.tax > 0 ? '-' : ''}${p.tax.toFixed(2)} zł`;
             if (isSkarbowe && p.tax === 0 && (p.category === 'Kupony' || p.category === 'odsetki')) {
-                taxDisplay = '<span style="color: #888">pobrany</span>';
+                taxDisplay = '<span style="color: #888; font-style: italic;">pobrany</span>';
             }
             
             tbodyProfList.innerHTML += `
@@ -1084,15 +1317,31 @@ async function loadData() {
                     <td style="color: #4CAF50;">${p.amount.toFixed(2)} zł</td>
                     <td style="color: #F44336;">${taxDisplay}</td>
                     <td style="padding: 5px; width: 1%; white-space: nowrap; text-align: right;">
-                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                            <button class="btn btn-edit-profit" data-id="${p.id}" style="font-size: 16px; background-color: var(--purple); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-pen"></i></button>
-                            <button class="btn btn-delete-profit" data-id="${p.id}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
+                        <div style="width: 140px; overflow: hidden; border-radius: 4px; position: relative; margin-left: auto;">
+                            <div id="slider-profit-${p.id}" style="display: flex; width: 280px; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0); align-items: center;">  
+                                
+                                <div style="width: 140px; display: flex; gap: 5px; justify-content: flex-end; align-items: center; height: 30px;">
+                                    <button class="btn btn-more-profit" data-id="${p.id}" style="font-size: 11px; background: none; border: 2px solid #ccc; border-radius: 50%; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;">
+                                        <i class="fa-solid fa-ellipsis"></i>
+                                    </button>
+                                </div>
+
+                                <div style="width: 140px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; height: 30px;">
+                                    <button class="btn btn-edit-profit" data-id="${p.id}" style="font-size: 16px; background-color: var(--purple); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-pen"></i></button>
+                                    <button class="btn btn-delete-profit" data-id="${p.id}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
+                                    <button class="btn btn-close-slider-profit" data-id="${p.id}" style="font-size: 20px; background: none; border: none; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;" title="Anuluj">
+                                        <i class="fa-regular fa-circle-xmark"></i>
+                                    </button>
+                                </div>
+                                
+                            </div>
                         </div>
                     </td>
                 </tr>
             `;
         });
     }
+
 
     const tbodyDep = document.getElementById('deposits-tbody');
     if (tbodyDep) tbodyDep.innerHTML = '';
@@ -1104,25 +1353,76 @@ async function loadData() {
 
     currentDeposits = deposits;
 
+    // --- POBIERANIE BIEŻĄCYCH KURSÓW NBP ---
+    try {
+        const resUsd = await fetch('https://api.nbp.pl/api/exchangerates/rates/A/USD/?format=json');
+        if (resUsd.ok) {
+            const data = await resUsd.json();
+            cachedCurrentUsd = data.rates[0].mid;
+        }
+        const resEur = await fetch('https://api.nbp.pl/api/exchangerates/rates/A/EUR/?format=json');
+        if (resEur.ok) {
+            const data = await resEur.json();
+            cachedCurrentEur = data.rates[0].mid;
+        }
+    } catch(e) {
+        console.log("Błąd aktualizacji bieżących kursów walut z NBP.");
+    }
+
+    // --- NADPISANIE WARTOŚCI W LOCIE DLA CAŁEJ LOGIKI ---
     deposits.forEach((d: any) => {
-        totalAssetsPLN += d.amount_pln;
+        let displayRate = d.exchange_rate;
+        let displayPln = d.amount_pln;
+        let rateText = '-';
+
+        if (d.target_currency) {
+            rateText = `${displayRate.toFixed(4)} <span style="color:#aaa; font-size:11px;">(na ${d.target_currency})</span>`;
+        } else if (d.currency !== 'PLN') {
+            if (d.currency === 'USD' && cachedCurrentUsd > 0) displayRate = cachedCurrentUsd;
+            if (d.currency === 'EUR' && cachedCurrentEur > 0) displayRate = cachedCurrentEur;
+            
+            displayPln = d.amount * displayRate;
+            rateText = `${displayRate.toFixed(4)} <span style="color:#aaa; font-size:11px;">(obecny)</span>`;
+            
+            // KRYTYCZNA ZMIANA: Nadpisujemy właściwość obiektu d, aby reszta skryptu (wykresy itp.) korzystała z nowego kursu!
+            d.amount_pln = displayPln;
+        }
+
+        totalAssetsPLN += d.amount_pln; 
         allocation[d.destination] = (allocation[d.destination] || 0) + d.amount_pln;
 
-        if (d.currency === 'USD') {
-            totalUsdAmount += d.amount;
-            totalUsdPln += d.amount_pln;
-        } else if (d.currency === 'EUR') {
-            totalEurAmount += d.amount;
-            totalEurPln += d.amount_pln;
+        if (d.target_currency) {
+            if (d.currency === 'USD') {
+                totalUsdAmount += d.amount;
+                totalUsdPln += d.amount_pln;
+            } else if (d.target_currency === 'USD') {
+                const usdAmount = d.amount_pln / d.exchange_rate;
+                totalUsdAmount += usdAmount;
+                totalUsdPln += d.amount_pln;
+            }
+
+            if (d.currency === 'EUR') {
+                totalEurAmount += d.amount;
+                totalEurPln += d.amount_pln;
+            } else if (d.target_currency === 'EUR') {
+                const eurAmount = d.amount_pln / d.exchange_rate;
+                totalEurAmount += eurAmount;
+                totalEurPln += d.amount_pln;
+            }
+        }
+
+        let currencyDisplay = `${d.amount} ${d.currency}`;
+        if (d.target_currency) {
+            currencyDisplay += ` <i class="fa-solid fa-arrow-right" style="font-size:10px; color:#aaa; margin:0 5px;"></i> ${d.target_currency}`;
         }
 
         if (tbodyDep) {
             tbodyDep.innerHTML += `
                 <tr>
                     <td>${d.date}</td>
-                    <td>${d.amount} ${d.currency}</td>
-                    <td>${d.exchange_rate > 1 ? d.exchange_rate.toFixed(4) : '-'}</td>
-                    <td>${d.amount_pln.toFixed(2)} zł</td>
+                    <td>${currencyDisplay}</td>
+                    <td>${rateText}</td>
+                    <td style="font-weight: ${d.target_currency ? 'normal' : 'bold'}; color: ${d.target_currency ? 'var(--text-color)' : '#4CAF50'};">${d.amount_pln.toFixed(2)} zł</td>
                     <td>${d.destination}</td>
                     
                     <td style="padding: 5px; width: 1%; white-space: nowrap; text-align: right;">
@@ -1154,21 +1454,6 @@ async function loadData() {
     cachedAvgUsd = totalUsdAmount > 0 ? totalUsdPln / totalUsdAmount : 0;
     cachedAvgEur = totalEurAmount > 0 ? totalEurPln / totalEurAmount : 0;
     
-    try {
-        const resUsd = await fetch('https://api.nbp.pl/api/exchangerates/rates/A/USD/?format=json');
-        if (resUsd.ok) {
-            const data = await resUsd.json();
-            cachedCurrentUsd = data.rates[0].mid;
-        }
-        const resEur = await fetch('https://api.nbp.pl/api/exchangerates/rates/A/EUR/?format=json');
-        if (resEur.ok) {
-            const data = await resEur.json();
-            cachedCurrentEur = data.rates[0].mid;
-        }
-    } catch(e) {
-        console.log("Brak dostępu do NBP.");
-    }
-
     updateCurrencyWidgetUI();
 
     const allocMap = {
@@ -1252,7 +1537,6 @@ async function loadData() {
         if (!groupedByYear[year]) groupedByYear[year] = {};
         
         if (!groupedByYear[year][p.broker]) {
-            // DODANE POLA DLA KUPONÓW W STRUKTURZE LAT
             groupedByYear[year][p.broker] = { 
                 "dywidendy": {profit: 0, tax: 0}, 
                 "sprzedaz": {profit: 0, tax: 0}, 
@@ -1261,7 +1545,6 @@ async function loadData() {
             };
         }
         
-        // Zabezpieczenie dynamicznej nazwy kategorii
         let targetCategory = p.category;
         if (p.category.startsWith('Kupony')) targetCategory = 'kupony';
 
@@ -1287,11 +1570,10 @@ async function loadData() {
         const netProfit = totalYearProfit - totalYearTax;
         const profitColor = netProfit >= 0 ? '#4CAF50' : '#ff5252'; 
 
-
         let tableHTML = `
-        <div class="year-block">
+        <div class="year-block" style="background-color: var(--widget-background); border: 1px solid var(--widget-border)">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">
-                <h2 style="margin: 0; padding: 0; border: none; color: var(--accent);">Rok ${year}</h2>
+                <h2 style="margin: 0; padding: 0; border: none; color: var(--text-color);">Rok ${year}</h2>
                 <div style="text-align: right;">
                     <span style="font-size: 12px; color: #aaa;">Łączny zysk netto:</span><br>
                     <strong style="font-size: 18px; color: ${profitColor};">${netProfit.toFixed(2)} zł</strong>
@@ -1299,7 +1581,6 @@ async function loadData() {
             </div>
             <table class="tax-table" style="width: 100%; border-collapse: collapse;">
                 <thead>
-                    <!-- GŁÓWNY RZĄD NAGŁÓWKÓW -->
                     <tr style="background-color: rgba(255,255,255,0.05);">
                         <th rowspan="2" style="padding: 10px; text-align: left; vertical-align: middle; border-right: 1px solid var(--border);">Konto</th>
                         <th colspan="2" style="padding: 8px; text-align: center; border-right: 1px solid var(--border);">Dywidendy</th>
@@ -1307,41 +1588,35 @@ async function loadData() {
                         <th colspan="2" style="padding: 8px; text-align: center; border-right: 1px solid var(--border);">Odsetki</th>
                         <th colspan="2" style="padding: 8px; text-align: center; color: #00d2e0;">Kupony</th>
                     </tr>
-                    <!-- RZĄD PODKATEGORII (Zysk / Podatek) -->
                     <tr style="background-color: rgba(255,255,255,0.02); font-size: 12px; color: #aaa;">
                         <th style="padding: 5px 10px; text-align: right; font-weight: normal;">Zysk</th>
-                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Podatek</th>
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Należny Podatek</th>
                         
                         <th style="padding: 5px 10px; text-align: right; font-weight: normal;">Zysk</th>
-                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Podatek</th>
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Należny Podatek</th>
                         
                         <th style="padding: 5px 10px; text-align: right; font-weight: normal;">Zysk</th>
-                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Podatek</th>
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; border-right: 1px solid var(--border);">Należny Podatek</th>
                         
                         <th style="padding: 5px 10px; text-align: right; font-weight: normal; color: #00d2e0;">Zysk</th>
-                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; color: #00d2e0;">Podatek</th>
+                        <th style="padding: 5px 10px; text-align: right; font-weight: normal; color: #00d2e0;">Należny Podatek</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
-
-
         activeBrokersInYear.forEach(b => {
             const data = groupedByYear[year][b];
             
-            // Logika wykrywania obligacji skarbowych dla podsumowania rocznego
             const brokerObj = userBrokers.find((br:any) => br.name === b);
             const isSkarbowe = brokerObj && brokerObj.type === 'Obligacje skarbowe krajowe';
 
-            // Inteligentne funkcje formatujące - ukrywają zera zostawiając czyste puste pole!
             const fProf = (val: number) => val === 0 ? '' : `${val.toFixed(2)} zł`;
             const fTax = (val: number, isPobrany: boolean = false) => {
                 if (isPobrany) return '<span style="color: #888; font-style: italic;">pobrany</span>';
                 return val === 0 ? '' : `-${val.toFixed(2)} zł`;
             };
 
-            // Sprawdzamy czy w tym miejscu podatek z obligacji został "pobrany" u źródła
             const odsPobrany = isSkarbowe && data['odsetki'].profit > 0 && data['odsetki'].tax === 0;
             const kupPobrany = isSkarbowe && data['kupony'].profit > 0 && data['kupony'].tax === 0;
 
@@ -1387,6 +1662,9 @@ async function loadData() {
     } else {
         if (allChartsWrapper) allChartsWrapper.style.display = ''; 
         if (emptyLabel) emptyLabel.style.display = 'none';
+
+        await syncSP500();
+
         renderCharts(allocMap, deposits, profits);
     }
 }
@@ -1396,11 +1674,9 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
     const ctxAlloc = document.getElementById('allocationChart') as HTMLCanvasElement;
     if (allocChart) allocChart.destroy();
 
-    // Filtrujemy kategorie z wartością 0, żeby na wykresie kołowym nie było pustych etykiet
     const filteredLabels = Object.keys(allocMap).filter(k => allocMap[k] > 0);
     const filteredData = filteredLabels.map(k => allocMap[k]);
 
-    // Mapowanie przyjaznych nazw do wykresu
     const displayLabels = filteredLabels.map(k => {
         if (k === 'akcje') return 'Akcje';
         if (k === 'skarbowe') return 'Oblig. skarbowe';
@@ -1431,14 +1707,13 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
                         position: 'right', 
                         labels: { 
                             color: 'rgba(120, 120, 120, 0.8)',
-                            usePointStyle: true,      // Włącza nowoczesny styl legendy (bez ramek!)
-                            pointStyle: 'rectRounded',     // Zmienia kwadraty na eleganckie kółka (możesz też wpisać 'rectRounded')
-                            padding: 20,           
+                            usePointStyle: true,
+                            pointStyle: 'rectRounded',
+                            padding: 20,          
                         } 
                     },
                     title: { display: true, text: 'Skład Portfolio'}
                 }
-
             }
         });
     }
@@ -1452,6 +1727,7 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
     const depositsData: number[] = [];
     const totalAssetsData: number[] = [];
 
+    // KRYTYCZNA ZMIANA: Tabela sumy depozytów i zysków korzysta ze zmienionego d.amount_pln!
     for (const d of sortedDep) {
         labels.push(d.date);
         cumulativeDeposits += d.amount_pln;
@@ -1553,40 +1829,62 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
         });
     }
 
+
     const ctxProfitBar = document.getElementById('profitBarChart') as HTMLCanvasElement;
     const ctxRoi = document.getElementById('roiChart') as HTMLCanvasElement;
     if (profitBarChart) profitBarChart.destroy();
     if (roiChart) roiChart.destroy();
 
-    const yearlyProfits: Record<string, { stocksNet: number, bondsSkarboweNet: number, bondsKorpoNet: number, otherNet: number, totalNet: number }> = {};
+    // Przygotowanie struktury na wszystkie 7 kategorii
+    const yearlyProfits: Record<string, { 
+        akcje: number, 
+        skarbowe: number, 
+        korpo: number, 
+        oszczednosciowe: number, 
+        krypto: number, 
+        metale: number, 
+        inne: number, 
+        totalNet: number 
+    }> = {};
+    
     let grandTotalNetProfit = 0; 
 
     profits.forEach(p => {
         const year = p.date.substring(0, 4);
         if (!yearlyProfits[year]) {
-            yearlyProfits[year] = { stocksNet: 0, bondsSkarboweNet: 0, bondsKorpoNet: 0, otherNet: 0, totalNet: 0 };
+            yearlyProfits[year] = { akcje: 0, skarbowe: 0, korpo: 0, oszczednosciowe: 0, krypto: 0, metale: 0, inne: 0, totalNet: 0 };
         }
 
         const netAmount = p.amount - p.tax;
         yearlyProfits[year].totalNet += netAmount;
         grandTotalNetProfit += netAmount;
 
-        if (p.broker.includes('Akcje')) yearlyProfits[year].stocksNet += netAmount;
-        else if (p.broker === 'Obligacje skarbowe') yearlyProfits[year].bondsSkarboweNet += netAmount;
-        else if (p.broker === 'Obligacje korporacyjne') yearlyProfits[year].bondsKorpoNet += netAmount;
-        else yearlyProfits[year].otherNet += netAmount;
+        const brokerObj = userBrokers.find((b: any) => b.name === p.broker);
+        const brokerType = brokerObj ? brokerObj.type : 'Inne';
+
+        if (brokerType === 'Akcje') yearlyProfits[year].akcje += netAmount;
+        else if (brokerType === 'Obligacje skarbowe krajowe') yearlyProfits[year].skarbowe += netAmount;
+        else if (brokerType === 'Obligacje korporacyjne i zagraniczne') yearlyProfits[year].korpo += netAmount;
+        else if (brokerType === 'Konta oszczędnościowe') yearlyProfits[year].oszczednosciowe += netAmount;
+        else if (brokerType === 'Kryptowaluty') yearlyProfits[year].krypto += netAmount;
+        else if (brokerType === 'Metale szlachetne') yearlyProfits[year].metale += netAmount;
+        else yearlyProfits[year].inne += netAmount;
     });
 
     const sortedYears = Object.keys(yearlyProfits).sort();
     if (sortedYears.length === 0) {
         sortedYears.push(new Date().getFullYear().toString());
-        yearlyProfits[sortedYears[0]] = { stocksNet: 0, bondsSkarboweNet: 0, bondsKorpoNet: 0, otherNet: 0, totalNet: 0 };
+        yearlyProfits[sortedYears[0]] = { akcje: 0, skarbowe: 0, korpo: 0, oszczednosciowe: 0, krypto: 0, metale: 0, inne: 0, totalNet: 0 };
     }
 
-    const dataStocks = sortedYears.map(y => yearlyProfits[y].stocksNet);
-    const dataBondsSkarbowe = sortedYears.map(y => yearlyProfits[y].bondsSkarboweNet);
-    const dataBondsKorpo = sortedYears.map(y => yearlyProfits[y].bondsKorpoNet);
-    const dataOther = sortedYears.map(y => yearlyProfits[y].otherNet);
+    // Ekstrakcja danych do wykresu dla każdej kategorii
+    const dataAkcje = sortedYears.map(y => yearlyProfits[y].akcje);
+    const dataSkarbowe = sortedYears.map(y => yearlyProfits[y].skarbowe);
+    const dataKorpo = sortedYears.map(y => yearlyProfits[y].korpo);
+    const dataOszczednosciowe = sortedYears.map(y => yearlyProfits[y].oszczednosciowe);
+    const dataKrypto = sortedYears.map(y => yearlyProfits[y].krypto);
+    const dataMetale = sortedYears.map(y => yearlyProfits[y].metale);
+    const dataInne = sortedYears.map(y => yearlyProfits[y].inne);
 
     if (ctxProfitBar) {
         profitBarChart = new (window as any).Chart(ctxProfitBar, {
@@ -1594,10 +1892,14 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
             data: {
                 labels: sortedYears,
                 datasets: [
-                    { label: 'Zysk z akcji (netto)', data: dataStocks, backgroundColor: '#4285F4' },
-                    { label: 'Obligacje skarbowe (netto)', data: dataBondsSkarbowe, backgroundColor: '#EA4335' },
-                    { label: 'Obligacje korporacyjne (netto)', data: dataBondsKorpo, backgroundColor: '#FBBC05' },
-                    { label: 'Inne (netto)', data: dataOther, backgroundColor: '#34A853' }
+                    // Używamy kolorów zbieżnych z wykresem kołowym alokacji
+                    { label: 'Akcje', data: dataAkcje, backgroundColor: '#0091ff' },
+                    { label: 'Obligacje skarbowe', data: dataSkarbowe, backgroundColor: '#30d158' },
+                    { label: 'Oblig. korporacyjne i zagraniczne', data: dataKorpo, backgroundColor: '#ff4245' },
+                    { label: 'Konta oszczędnościowe', data: dataOszczednosciowe, backgroundColor: '#ff9230' },
+                    { label: 'Kryptowaluty', data: dataKrypto, backgroundColor: '#00d2e0' },
+                    { label: 'Metale szlachetne', data: dataMetale, backgroundColor: '#ffd600' },
+                    { label: 'Inne', data: dataInne, backgroundColor: '#939393' }
                 ]
             },
             options: {
@@ -1610,7 +1912,17 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
                 plugins: { 
                     title: { display: true, text: 'Zysk netto z inwestycji'}, 
                     legend: { 
-                        labels: {color: 'rgba(120, 120, 120, 0.8)' }
+                        labels: {
+                            color: 'rgba(120, 120, 120, 0.8)',
+                            usePointStyle: true,
+                            pointStyle: 'rectRounded',
+                            // Filtr ukrywający z legendy kategorie, które w całym portfelu mają 0 zysku (opcjonalnie dla czytelności)
+                            filter: function(legendItem: any, chartData: any) {
+                                const dataset = chartData.datasets[legendItem.datasetIndex];
+                                const hasData = dataset.data.some((value: number) => value !== 0);
+                                return hasData;
+                            }
+                        }
                     }
                 },
             }
@@ -1623,6 +1935,7 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
         depositsByYear[y] = (depositsByYear[y] || 0) + d.amount_pln;
     }
 
+
     let runningDep = 0;
     const roiData = sortedYears.map(year => {
         runningDep += (depositsByYear[year] || 0);
@@ -1630,29 +1943,62 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
         return (yearlyProfits[year].totalNet / runningDep) * 100;
     });
 
+    // Pobieramy automatycznie zaktualizowane dane z LocalStorage (jeśli są)
+    const storedSP500 = JSON.parse(localStorage.getItem('sp500Returns') || '{}');
+    
+    // Twardy fallback, jeśli ktoś wyłączy FMP API suwakiem w ustawieniach
+    const fallbackSP500: Record<string, number> = {
+        '2018': -4.38, '2019': 31.49, '2020': 18.40, '2021': 28.71, '2022': -18.11, '2023': 26.29, '2024': 24.23, '2025': 20.0, '2026': 15.0
+    };
+
+    const sp500Data = sortedYears.map(year => {
+        if (storedSP500[year] !== undefined) return storedSP500[year];
+        if (fallbackSP500[year] !== undefined) return fallbackSP500[year];
+        return 0; // Jeśli nie ma danych dla jakiegoś ekstremalnego roku
+    });
+
+
     if (ctxRoi) {
         roiChart = new (window as any).Chart(ctxRoi, {
             type: 'line',
             data: {
                 labels: sortedYears,
-                datasets: [{
-                    label: 'Stopa zwrotu (%)',
-                    data: roiData,
-                    borderColor: '#4285F4',
-                    backgroundColor: 'rgba(66, 133, 244, 0.1)',
-                    fill: false,
-                    tension: 0.4 
-                }]
+                datasets: [
+                    {
+                        label: 'Twój Portfel',
+                        data: roiData,
+                        borderColor: '#4285F4', // Niebieski dla Twojego portfela
+                        backgroundColor: 'rgba(66, 133, 244, 0.1)',
+                        fill: false,
+                        tension: 0.4 
+                    },
+                    {
+                        // NOWE: Dodana linia S&P 500
+                        label: 'S&P 500',
+                        data: sp500Data,
+                        borderColor: '#34A853', // Zielony dla benchmarku
+                        backgroundColor: 'rgba(52, 168, 83, 0.1)',
+                        borderDash: [5, 5], // Przerywana linia
+                        fill: false,
+                        tension: 0.4
+                    }
+                ]
             },
             options: {
                 maintainAspectRatio: false,
                 responsive: true,
                 plugins: {
-                    legend: { display: false }, 
-                    title: { display: true, text: 'Stopa zwrotu od depozytu (Skala Roku)'},
-                    tooltip: { callbacks: { label: (ctx: any) => `${ctx.parsed.y.toFixed(2)} %` } }
+                    legend: { 
+                        display: true, // Włącza legendę, by było widać opisy!
+                        labels: { color: 'rgba(120, 120, 120, 0.8)', usePointStyle: true }
+                    }, 
+                    title: { display: true, text: 'Stopa zwrotu w skali roku od całości skumulowanego depozytu'},
+                    tooltip: { 
+                        callbacks: { 
+                            label: (ctx: any) => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} %` 
+                        } 
+                    }
                 },
-
                 scales: {
                     x: { 
                         ticks: { color: 'rgba(120, 120, 120, 0.8)' }, 
@@ -1661,7 +2007,6 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
                     y: { 
                         ticks: { 
                             color: 'rgba(120, 120, 120, 0.8)', 
-                            // Dodanie drugiego parametru (index) upewnia TypeScript, że sygnatura jest właściwa
                             callback: function(val: any, index: number) { 
                                 return val + '%'; 
                             }
@@ -1669,13 +2014,11 @@ function renderCharts(allocMap: Record<string, number>, deposits: any[], profits
                         grid: { color: 'rgba(120, 120, 120, 0.2)' }  
                     }                
                 }
-
             }
         });
     }
 }
 
-// --- 7. OBSŁUGA PORTFELA (AKTYWA) ---
 // --- 7. OBSŁUGA PORTFELA (AKTYWA) ---
 const modalAsset = document.getElementById('modal-asset') as HTMLDivElement;
 const assetBrokerSelect = document.getElementById('asset-broker') as HTMLSelectElement;
@@ -1748,6 +2091,7 @@ document.getElementById('btn-save-asset')?.addEventListener('click', async () =>
         type: assetBrokerSelect.value, // <--- Teraz tu idzie np. 'Revolut'
         purchase_date: (document.getElementById('asset-date') as HTMLInputElement).value,
         price: parseFloat((document.getElementById('asset-price') as HTMLInputElement).value) || 0,
+        currency: (document.getElementById('asset-currency') as HTMLSelectElement).value, // NOWE: Zapis waluty
         quantity: parseFloat((document.getElementById('asset-quantity') as HTMLInputElement).value) || 0,
         coupon_date: (document.getElementById('asset-coupon-date') as HTMLInputElement).value || null,
         coupon_rate: parseFloat((document.getElementById('asset-coupon-rate') as HTMLInputElement).value) || 0,
@@ -1756,7 +2100,7 @@ document.getElementById('btn-save-asset')?.addEventListener('click', async () =>
 
     await (window as any).api.addAsset(asset);
     modalAsset?.classList.add('hidden');
-    loadAssetsData();
+    loadData();
 });
 
 async function loadAssetsData() {
@@ -1771,7 +2115,17 @@ async function loadAssetsData() {
     const stocksData: any[] = [];
 
     assets.forEach((a: any) => {
-        const totalValue = a.price * a.quantity;
+        // 1. ZABEZPIECZENIE WALUTY
+        const assetCurrency = a.currency || 'PLN';
+        let exchangeRate = 1.0;
+        
+        // 2. MAGICZNE POBRANIE DZISIEJSZEGO KURSU
+        if (assetCurrency === 'USD' && cachedCurrentUsd > 0) exchangeRate = cachedCurrentUsd;
+        if (assetCurrency === 'EUR' && cachedCurrentEur > 0) exchangeRate = cachedCurrentEur;
+
+        // 3. MATEMATYKA 
+        const foreignValue = a.price * a.quantity;
+        const totalValuePln = foreignValue * exchangeRate;
         
         // TŁUMACZENIE BROKERA NA TYP
         const brokerObj = userBrokers.find((b:any) => b.name === a.type);
@@ -1781,27 +2135,69 @@ async function loadAssetsData() {
             ? `${a.coupon_rate}% (${a.coupon_freq})<br><small>Wypłata: ${a.coupon_date}</small>` 
             : '-';
 
-        const rowHTML = `
-            <tr>
-                <td><strong>${a.name}</strong></td>
-                <td>${a.type} <br><small style="color:#aaa;">(${realType})</small></td>
-                <td>${a.purchase_date}</td>
-                <td>${a.quantity} szt. <br><small>po ${a.price.toFixed(2)}</small></td>
-                <td style="color: #4CAF50; font-weight: bold;">${totalValue.toFixed(2)} zł</td>
-                <td>${couponInfo}</td>
-                <td>
-                    <button class="btn btn-edit-qty" data-id="${a.id}" style="padding: 5px; font-size: 11px;">Edytuj Ilość</button>
-                    <button class="btn btn-delete-asset" data-id="${a.id}" style="padding: 5px; font-size: 11px; background-color: #F44336;">Usuń</button>
-                </td>
-            </tr>
+        // 4. ŁADNE FORMATOWANIE TABELI
+        let priceDisplay = `${a.price.toFixed(2)} ${assetCurrency}`;
+        let valueDisplay = `${totalValuePln.toFixed(2)} zł`;
+        
+        if (assetCurrency !== 'PLN') {
+            valueDisplay += `<br><small style="color:#aaa; font-weight:normal; opacity: 0.8;">(${foreignValue.toFixed(2)} ${assetCurrency})</small>`;
+        }
+
+        // WYGENEROWANIE SUWAKA Z PRZYCISKAMI
+        const actionsHTML = `
+            <td style="padding: 5px; width: 1%; white-space: nowrap; text-align: right;">
+                <div style="width: 140px; overflow: hidden; border-radius: 4px; position: relative; margin-left: auto;">
+                    <div id="slider-asset-${a.id}" style="display: flex; width: 280px; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0); align-items: center;">  
+                        
+                        <div style="width: 140px; display: flex; gap: 5px; justify-content: flex-end; align-items: center; height: 30px;">
+                            <button class="btn btn-more-asset" data-id="${a.id}" style="font-size: 11px; background: none; border: 2px solid #ccc; border-radius: 50%; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;">
+                                <i class="fa-solid fa-ellipsis"></i>
+                            </button>
+                        </div>
+
+                        <div style="width: 140px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; height: 30px;">
+                            <button class="btn btn-edit-qty" data-id="${a.id}" style="font-size: 16px; background-color: var(--purple); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-pen"></i></button>
+                            <button class="btn btn-delete-asset" data-id="${a.id}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
+                            <button class="btn btn-close-slider-asset" data-id="${a.id}" style="font-size: 20px; background: none; border: none; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;" title="Anuluj">
+                                <i class="fa-regular fa-circle-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </td>
         `;
 
+        // 5. ROZDZIELENIE LOGIKI DLA OBLIGACJI I AKCJI
         if (realType.includes('Obligacje')) {
-            bondsData.push({ name: a.name, value: totalValue, type: realType });
-            if (tbodyBonds) tbodyBonds.innerHTML += rowHTML;
+            bondsData.push({ name: a.name, value: totalValuePln, type: realType });
+            if (tbodyBonds) {
+                tbodyBonds.innerHTML += `
+                    <tr>
+                        <td><strong>${a.name}</strong></td>
+                        <td>${a.type} <br><small style="color:#aaa;">(${realType})</small></td>
+                        <td>${a.purchase_date}</td>
+                        <td>${a.quantity} szt. <br><small>po ${priceDisplay}</small></td>
+                        <td style="color: #4CAF50; font-weight: bold;">${valueDisplay}</td>
+                        <td>${couponInfo}</td>
+                        ${actionsHTML}
+                    </tr>
+                `;
+            }
         } else {
-            stocksData.push({ name: a.name, value: totalValue, type: realType });
-            if (tbodyStocks) tbodyStocks.innerHTML += rowHTML;
+            stocksData.push({ name: a.name, value: totalValuePln, type: realType });
+            if (tbodyStocks) {
+                // BRAK kolumny z kuponami!
+                tbodyStocks.innerHTML += `
+                    <tr>
+                        <td><strong>${a.name}</strong></td>
+                        <td>${a.type} <br><small style="color:#aaa;">(${realType})</small></td>
+                        <td>${a.purchase_date}</td>
+                        <td>${a.quantity} szt. <br><small>po ${priceDisplay}</small></td>
+                        <td style="color: #4CAF50; font-weight: bold;">${valueDisplay}</td>
+                        ${actionsHTML}
+                    </tr>
+                `;
+            }
         }
     });
 
@@ -1815,8 +2211,22 @@ const handleTableClick = async (e: Event) => {
     const target = e.target as HTMLElement;
     const editBtn = target.closest('.btn-edit-qty');
     const deleteBtn = target.closest('.btn-delete-asset');
+    
+    // Nowe przyciski slidera
+    const moreBtn = target.closest('.btn-more-asset');
+    const closeBtn = target.closest('.btn-close-slider-asset');
 
-    if (editBtn) {
+    if (moreBtn) {
+        const id = moreBtn.getAttribute('data-id');
+        const slider = document.getElementById(`slider-asset-${id}`);
+        if (slider) slider.style.transform = 'translateX(-50%)'; 
+    }
+    else if (closeBtn) {
+        const id = closeBtn.getAttribute('data-id');
+        const slider = document.getElementById(`slider-asset-${id}`);
+        if (slider) slider.style.transform = 'translateX(0)'; 
+    }
+    else if (editBtn) {
         const id = editBtn.getAttribute('data-id');
         const editIdEl = document.getElementById('edit-qty-id') as HTMLInputElement;
         const editValEl = document.getElementById('edit-qty-val') as HTMLInputElement;
@@ -2047,14 +2457,32 @@ async function loadJournalData() {
                     <p><strong>Co poprawić:</strong><br>${entry.improvement}</p>
                 </div>
                 ${imgHTML}
-                <div style="margin-top: 15px; display: flex; justify-content: flex-end; gap: 10px;">
-                    <button class="btn btn-edit-journal" data-id="${entry.id}" style="padding: 5px 10px; font-size: 11px; background-color: var(--accent);">Edytuj</button>
-                    <button class="btn btn-delete-journal" data-id="${entry.id}" style="padding: 5px 10px; font-size: 11px; background-color: #F44336;">Usuń</button>
+                <div style="margin-top: 15px; display: flex; justify-content: flex-end;">
+                    <div style="width: 140px; overflow: hidden; border-radius: 4px; position: relative;">
+                        <div id="slider-journal-${entry.id}" style="display: flex; width: 280px; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(0); align-items: center;">  
+                            
+                            <!-- WIDOK 1: Trzy kropeczki -->
+                            <div style="width: 140px; display: flex; gap: 5px; justify-content: flex-end; align-items: center; height: 30px;">
+                                <button class="btn btn-more-journal" data-id="${entry.id}" style="font-size: 11px; background: none; border: 2px solid #ccc; border-radius: 50%; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;">
+                                    <i class="fa-solid fa-ellipsis"></i>
+                                </button>
+                            </div>
+
+                            <!-- WIDOK 2: Właściwe przyciski (Ołówek / Kosz / X) -->
+                            <div style="width: 140px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; height: 30px;">
+                                <button class="btn btn-edit-journal" data-id="${entry.id}" style="font-size: 16px; background-color: var(--purple); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-pen"></i></button>
+                                <button class="btn btn-delete-journal" data-id="${entry.id}" style="font-size: 16px; background-color: var(--red); border: none; border-radius: 30px; width: 45px; height: 30px; display: flex; align-items: center; justify-content: center; color: white; padding: 0; margin: 0;"><i class="fa-solid fa-trash"></i></button>
+                                <button class="btn btn-close-slider-journal" data-id="${entry.id}" style="font-size: 20px; background: none; border: none; color: #ccc; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; box-sizing: border-box; margin: 0;" title="Anuluj">
+                                    <i class="fa-regular fa-circle-xmark"></i>
+                                </button>
+                            </div>
+                            
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
-    });
-        
+    });    
     setRandomQuote();
 }
 
@@ -2063,8 +2491,22 @@ document.getElementById('journal-container')?.addEventListener('click', async (e
     const deleteBtn = target.closest('.btn-delete-journal');
     const editBtn = target.closest('.btn-edit-journal');
     const imgEl = target.closest('.journal-img');
+    
+    // Suwak
+    const moreBtn = target.closest('.btn-more-journal');
+    const closeBtn = target.closest('.btn-close-slider-journal');
 
-    if (deleteBtn) {
+    if (moreBtn) {
+        const id = moreBtn.getAttribute('data-id');
+        const slider = document.getElementById(`slider-journal-${id}`);
+        if (slider) slider.style.transform = 'translateX(-50%)'; 
+    }
+    else if (closeBtn) {
+        const id = closeBtn.getAttribute('data-id');
+        const slider = document.getElementById(`slider-journal-${id}`);
+        if (slider) slider.style.transform = 'translateX(0)'; 
+    }
+    else if (deleteBtn) {
         const id = parseInt(deleteBtn.getAttribute('data-id')!);
         if (confirm("Usunąć ten wpis z dziennika?")) {
             await (window as any).api.deleteJournalEntry(id);
@@ -2160,9 +2602,20 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
     const tbody = document.getElementById('watchlist-tbody');
     if (!tbody) return;
 
+    // --- KLUCZ API FMP ---
+    const FMP_API_KEY = localStorage.getItem('fmpApiKey') || '';
+    const isFmpEnabled = localStorage.getItem('fmpEnabled') === 'true'; 
+
+
+    document.querySelectorAll<HTMLElement>('.fmp-column').forEach((th) => {
+    th.style.display = isFmpEnabled ? 'table-cell' : 'none';
+    });
+
+    const colspanVal = isFmpEnabled ? 8 : 6;
+
     tbody.innerHTML = `
         <tr>
-            <td colspan="6" style="text-align:center;">
+            <td colspan="${colspanVal}" style="text-align:center;">
                 Ładowanie danych...
             </td>
         </tr>
@@ -2205,7 +2658,7 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
     if (uniqueWatchlist.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" style="text-align:center;">
+                <td colspan="${colspanVal}" style="text-align:center;">
                     Brak spółek. Kup akcje, zaimportuj listę lub dodaj ręcznie.
                 </td>
             </tr>
@@ -2213,14 +2666,45 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
         return;
     }
 
+    async function getFMPData(ticker: string) {
+        let dcf = '-';
+        let target = '-';
+        
+        if (!FMP_API_KEY) return { dcf, target };
+        
+        try {
+            const cleanTicker = ticker.split('.')[0]; 
+
+            const resDcf = await fetch(`https://financialmodelingprep.com/stable/discounted-cash-flow?symbol=${cleanTicker}&apikey=${FMP_API_KEY}`);
+            if (resDcf.ok) {
+                const data = await resDcf.json();
+                if (data && data.length > 0 && data[0].dcf) {
+                    dcf = data[0].dcf.toFixed(2);
+                }
+            }
+            
+            const resTarget = await fetch(`https://financialmodelingprep.com/stable/price-target-consensus?symbol=${cleanTicker}&apikey=${FMP_API_KEY}`);
+            if (resTarget.ok) {
+                const data = await resTarget.json();
+                if (data && data.length > 0 && data[0].targetConsensus) {
+                    target = data[0].targetConsensus.toFixed(2);
+                }
+            }
+        } catch(e) {
+            console.error("Błąd pobierania danych z FMP:", e);
+        }
+        
+        return { dcf, target };
+    }
+
     const promises = uniqueWatchlist.map(async (item: any) => {
-        const quote = await (window as any).api
-            .getYahooQuote(item.ticker)
-            .catch(() => null);
+        const quote = await (window as any).api.getYahooQuote(item.ticker).catch(() => null);
+        const fmp = isFmpEnabled ? await getFMPData(item.ticker) : null;
 
         return { 
             item, 
             quote, 
+            fmp,
             isOwned: ownedTickers.has(item.ticker) 
         };
     });
@@ -2230,7 +2714,7 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
     const ownedQuotes = quotes.filter(q => q.isOwned);
     const watchedQuotes = quotes.filter(q => !q.isOwned);
 
-    const renderRow = ({ item, quote, isOwned }: any) => {
+    const renderRow = ({ item, quote, fmp, isOwned }: any) => {
         const price = quote?.price != null ? quote.price.toFixed(2) : '-';
         const change = quote?.changePercent != null ? quote.changePercent.toFixed(2) : '-';
         const changeColor = quote?.changePercent > 0 ? '#4CAF50' : quote?.changePercent < 0 ? '#F44336' : '#fff';
@@ -2251,8 +2735,9 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
 
         const actionHTML = isOwned 
             ? `<span style="font-size: 11px; color: #aaa; background: rgba(255,255,255,0.05); padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border);">W portfelu</span>`
-            : `<button class="btn btn-delete-wl" data-id="${item.id}" style="padding: 5px 10px; font-size: 11px; background-color: #F44336; color: white;">Usuń</button>`;
+            : `<button class="btn btn-delete-wl" data-id="${item.id}" style="padding: 5px 10px; font-size: 11px; background-color: #F44336; color: white; border: none; cursor: pointer; border-radius: 4px;">Usuń</button>`;
 
+        // NAJPIERW BUDUJEMY LOGO
         let logoHTML = `
             <div style="position: relative; width: 32px; height: 32px; border-radius: 50%; background-color: #333; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
                 <span style="font-weight: bold; font-size: 11px; color: var(--accent); position: absolute; z-index: 1;">
@@ -2271,22 +2756,44 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
                 </div>
             `;
         }
-
         logoHTML += `</div>`;
 
+        // POTEM BUDUJEMY KOLUMNY FMP
+        let fmpColumnsHTML = '';
+        if (isFmpEnabled && fmp) {
+            let dcfColor = 'var(--text-color)';
+            if (fmp.dcf !== '-' && quote?.price != null) {
+                dcfColor = parseFloat(fmp.dcf) > quote.price ? '#4CAF50' : '#F44336';
+            }
+            
+            let targetColor = 'var(--text-color)';
+            if (fmp.target !== '-' && quote?.price != null) {
+                targetColor = parseFloat(fmp.target) > quote.price ? '#4CAF50' : '#F44336';
+            }
+
+            fmpColumnsHTML = `
+                <td style="color: ${dcfColor}; font-weight: bold;">${fmp.dcf}</td>
+                <td style="color: ${targetColor}; font-weight: bold;">${fmp.target}</td>
+            `;
+        }
+
+        // NA KOŃCU ZWRACAMY HTML (Jeden główny return)
         return `
             <tr class="watchlist-row" style="cursor: pointer; transition: 0.2s;" data-ticker="${item.ticker}">
                 <td style="display: flex; align-items: center; gap: 12px; padding: 12px;">
                     ${logoHTML}
                     <div>
-                        <div style="font-weight: bold; font-size: 14px;">${item.ticker}</div>
-                        <div style="font-size: 11px; color: #888;">${name}</div>
+                        <div style="font-weight: bold; font-size: 14px;">${name}</div>
+                        <div style="font-size: 11px; color: #888;">${item.ticker}</div>
                     </div>
                 </td>
                 <td style="font-weight: bold;">${price}</td>
                 <td style="color: ${changeColor}; font-weight: bold;">${changeSign}${change}%</td>
                 <td>${pe}</td>
                 <td style="color: ${pegColor}">${peg}</td>
+                
+                ${fmpColumnsHTML}
+                
                 <td>${actionHTML}</td>
             </tr>
         `;
@@ -2295,9 +2802,10 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
     let finalHTML = '';
 
     if (ownedQuotes.length > 0) {
+        // Zmieniono colspan="8" na colspan="${colspanVal}"
         finalHTML += `
             <tr style="background-color: rgba(255,255,255,0.05);">
-                <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: var(--accent); letter-spacing: 1px; text-transform: uppercase;">
+                <td colspan="${colspanVal}" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: var(--accent); letter-spacing: 1px; text-transform: uppercase;">
                     <i class="fa-solid fa-briefcase" style="margin-right: 8px;"></i> Posiadane w portfelu
                 </td>
             </tr>
@@ -2306,9 +2814,10 @@ document.getElementById('tv-import-file')?.addEventListener('change', async (e) 
     }
 
     if (watchedQuotes.length > 0) {
+        // Zmieniono colspan="8" na colspan="${colspanVal}"
         finalHTML += `
             <tr style="background-color: rgba(255,255,255,0.02);">
-                <td colspan="6" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px; text-transform: uppercase;">
+                <td colspan="${colspanVal}" style="padding: 10px 15px; font-size: 12px; font-weight: bold; color: #aaa; letter-spacing: 1px; text-transform: uppercase;">
                     <i class="fa-solid fa-eye" style="margin-right: 8px;"></i> Obserwowane
                 </td>
             </tr>
@@ -2325,28 +2834,32 @@ document.getElementById('watchlist-tbody')?.addEventListener('click', async (e) 
     const row = target.closest('.watchlist-row');
 
     if (deleteBtn) {
-        e.stopPropagation(); 
-        const id = parseInt(deleteBtn.getAttribute('data-id')!);
-        await (window as any).api.deleteWatchlistTicker(id);
-        (window as any).loadWatchlistData();
-    } 
-    else if (row) {
-        const ticker = row.getAttribute('data-ticker');
-        if (!ticker) return;
+            e.stopPropagation(); 
+            const id = parseInt(deleteBtn.getAttribute('data-id')!);
+            
+            // NOWE: Pytanie o potwierdzenie usunięcia z Watchlisty
+            if (confirm("Czy na pewno chcesz usunąć tę spółkę z listy obserwowanych?")) {
+                await (window as any).api.deleteWatchlistTicker(id);
+                (window as any).loadWatchlistData();
+            }
+        } 
+        else if (row) {
+            const ticker = row.getAttribute('data-ticker');
+            if (!ticker) return;
 
-        const valTbody = document.getElementById('val-tbody');
-        const valTitle = document.getElementById('val-title');
-        if(!valTbody || !valTitle) return;
+            const valTbody = document.getElementById('val-tbody');
+            const valTitle = document.getElementById('val-title');
+            if(!valTbody || !valTitle) return;
 
-        valTitle.innerText = `Ładowanie wyceny ${ticker}...`;
+            valTitle.innerText = `Ładowanie wyceny ${ticker}...`;
 
-        const btnOpenYahoo = document.getElementById('btn-open-yahoo');
-        if (btnOpenYahoo) {
-            btnOpenYahoo.onclick = () => {
-                const url = `https://finance.yahoo.com/quote/${ticker}/key-statistics/`;
-                (window as any).api.openExternal(url);
-            };
-        }
+            const btnOpenYahoo = document.getElementById('btn-open-yahoo');
+            if (btnOpenYahoo) {
+                btnOpenYahoo.onclick = () => {
+                    const url = `https://finance.yahoo.com/quote/${ticker}/key-statistics/`;
+                    (window as any).api.openExternal(url);
+                };
+            }
 
         valTbody.innerHTML = '';
         modalValuation?.classList.remove('hidden');
@@ -2397,3 +2910,211 @@ document.getElementById('watchlist-tbody')?.addEventListener('click', async (e) 
 
 // START
 loadData();
+
+
+
+// ==========================================
+// --- 10. KALKULATOR WIELU PRZELEWÓW CSV ---
+// ==========================================
+
+const currencySelect = document.getElementById('currency-select') as HTMLSelectElement;
+const csvUpload = document.getElementById('csv-upload') as HTMLInputElement;
+const rowsContainer = document.getElementById('rows-container') as HTMLDivElement;
+const btnAddRow = document.getElementById('btn-add-row') as HTMLButtonElement;
+const totalCurrencyEl = document.getElementById('total-currency') as HTMLSpanElement;
+const totalPlnEl = document.getElementById('total-pln') as HTMLSpanElement;
+const currencyLabelEl = document.getElementById('currency-label') as HTMLSpanElement;
+
+// Pobiera kurs średni NBP z ostatniego dostępnego dnia roboczego przed podaną datą transakcji
+async function getCalcNBPRate(currency: string, transactionDateStr: string): Promise<number> {
+    if (!transactionDateStr) return 0;
+    
+    let date = new Date(transactionDateStr);
+    
+    // Pętla cofająca się do 7 dni (na wypadek długich weekendów/świąt)
+    for (let i = 0; i < 7; i++) {
+        date.setDate(date.getDate() - 1);
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        const formattedDate = `${yyyy}-${mm}-${dd}`;
+        
+        try {
+            const response = await fetch(`https://api.nbp.pl/api/exchangerates/rates/A/${currency}/${formattedDate}/?format=json`);
+            if (response.ok) {
+                const data = await response.json();
+                return data.rates[0].mid;
+            }
+        } catch (error) {
+            // Ciche przejście do kolejnego dnia wstecz w przypadku braku danych
+        }
+    }
+    return 0; // Jeśli nie znajdzie kursu
+}
+
+// Funkcja przeliczająca łączne sumy ze wszystkich wierszy
+function updateCalcTotals(): void {
+    if (!rowsContainer || !totalCurrencyEl || !totalPlnEl || !currencyLabelEl || !currencySelect) return;
+
+    let totalCurrency = 0;
+    let totalPln = 0;
+    
+    const rows = rowsContainer.querySelectorAll('.calc-row');
+    rows.forEach(row => {
+        const amountInput = row.querySelector('.amount-input') as HTMLInputElement;
+        const plnResult = row.querySelector('.pln-result') as HTMLSpanElement;
+        
+        const amount = parseFloat(amountInput.value) || 0;
+        const pln = parseFloat(plnResult.dataset.value || '0') || 0;
+        
+        totalCurrency += amount;
+        totalPln += pln;
+    });
+
+    totalCurrencyEl.textContent = totalCurrency.toFixed(2);
+    totalPlnEl.textContent = totalPln.toFixed(2);
+    currencyLabelEl.textContent = currencySelect.value;
+}
+
+// Tworzy pojedynczy wiersz kalkulatora
+function createCalcRow(defaultDate: string = '', defaultAmount: string = ''): void {
+    if (!rowsContainer) return;
+
+    const row = document.createElement('div');
+    row.className = 'calc-row';
+    row.style.cssText = 'display: flex; gap: 15px; align-items: center; padding: 5px 0;';
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.className = 'date-input btn';
+    dateInput.value = defaultDate;
+
+    const amountInput = document.createElement('input');
+    amountInput.type = 'number';
+    amountInput.step = '0.01';
+    amountInput.className = 'amount-input btn';
+    amountInput.placeholder = 'Kwota';
+    amountInput.addEventListener('blur', () => {
+        const val = parseFloat(amountInput.value);
+        if (!isNaN(val)) amountInput.value = val.toFixed(2);
+    });
+    amountInput.value = defaultAmount;
+
+    const resultSpan = document.createElement('span');
+    resultSpan.className = 'pln-result';
+    resultSpan.style.cssText = 'min-width: 250px; font-weight: bold; color: #4CAF50;';
+    resultSpan.textContent = '0.00 PLN';
+    resultSpan.dataset.value = '0';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn';
+    removeBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+    removeBtn.style.color = '#ff4444';
+    removeBtn.onclick = () => { 
+        row.remove(); 
+        updateCalcTotals(); 
+    };
+
+    // Obsługa przeliczenia przy zmianie wartości lub daty
+    const calculateRow = async () => {
+        if (dateInput.value && amountInput.value && currencySelect) {
+            resultSpan.textContent = 'Pobieranie kursu...';
+            resultSpan.style.color = '#aaa';
+
+            const rate = await getCalcNBPRate(currencySelect.value.toLowerCase(), dateInput.value);
+            const amount = parseFloat(amountInput.value) || 0;
+            const plnValue = amount * rate;
+            
+            resultSpan.dataset.value = plnValue.toString();
+            resultSpan.textContent = `${plnValue.toFixed(2)} PLN (kurs NBP: ${rate.toFixed(4)})`;
+            resultSpan.style.color = '#4CAF50';
+            updateCalcTotals();
+        } else {
+            resultSpan.textContent = '0.00 PLN';
+            resultSpan.dataset.value = '0';
+            updateCalcTotals();
+        }
+    };
+
+    dateInput.addEventListener('change', calculateRow);
+    amountInput.addEventListener('input', calculateRow);
+    currencySelect?.addEventListener('change', calculateRow);
+
+    row.append(dateInput, amountInput, resultSpan, removeBtn);
+    rowsContainer.append(row);
+
+    // Automatyczne przeliczenie po imporcie danych z CSV
+    if (defaultDate && defaultAmount) {
+        calculateRow();
+    }
+}
+
+// Inicjalizacja domyślnego wiersza i zdarzeń
+if (btnAddRow) btnAddRow.addEventListener('click', () => createCalcRow());
+if (currencySelect) currencySelect.addEventListener('change', updateCalcTotals);
+
+// Parser plików CSV
+// Parser plików CSV
+if (csvUpload) {
+    csvUpload.addEventListener('change', (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const text = event.target?.result as string;
+            const lines = text.split(/\r\n|\n/);
+            
+            if (rowsContainer) rowsContainer.innerHTML = ''; // Czyści obecne wiersze
+
+            lines.forEach((line, index) => {
+                if (index === 0 || !line.trim()) return; 
+                
+                // 1. Sprawdzamy separator struktury (Numbers/Excel w PL używa średnika)
+                const isSemicolon = line.includes(';');
+                let cols: string[] = [];
+
+                if (isSemicolon) {
+                    cols = line.split(';');
+                } else {
+                    // Dzielenie po przecinkach z pominięciem przecinków wewnątrz cudzysłowów
+                    const matches = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
+                    cols = matches ? matches : line.split(',');
+                }
+                
+                const type = cols[0]?.replace(/["']/g, '').trim();
+                
+
+                if (type && type.toLowerCase() === 'deposit') {
+                    const timeStr = cols[4]?.replace(/["']/g, '').trim(); 
+                    let amountStr = cols[5]?.replace(/["']/g, '').trim(); 
+                    
+                    // 2. Usuwamy spacje i zamieniamy polski przecinek na kropkę
+                    if (amountStr) {
+                        amountStr = amountStr.replace(/\s/g, '').replace(',', '.');
+                        
+                        // NOWE: Wymuszenie zawsze dwóch miejsc po przecinku (np. 47.7 -> 47.70)
+                        const amountNum = parseFloat(amountStr);
+                        if (!isNaN(amountNum)) {
+                            amountStr = amountNum.toFixed(2);
+                        }
+                    }
+                    
+                    const dateMatch = timeStr?.match(/^\d{4}-\d{2}-\d{2}/);
+                    const parsedDate = dateMatch ? dateMatch[0] : '';
+                    
+                    if (parsedDate && amountStr) {
+                        createCalcRow(parsedDate, amountStr);
+                    }
+                }
+            });
+            
+            target.value = ''; // Pozwala zaimportować ponownie ten sam plik
+        };
+        reader.readAsText(file);
+    });
+
+    // Uruchamia jeden pusty wiersz na start, jeśli strona zawiera kalkulator
+    if (rowsContainer) createCalcRow();
+}

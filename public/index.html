@@ -56,7 +56,7 @@
                                     <!-- Tutaj skrypt wstawi dane -->
                                 </tbody>
                                 <tfoot>
-                                    <tr style="background-color: #444; font-weight: bold; border-top: 2px solid var(--border);">
+                                    <tr style="background-color: rgba(68, 68, 68, 0.5); font-weight: bold; border-top: 2px solid var(--border);">
                                         <td style="padding: 10px;">Razem:</td>
                                         <td id="allocation-total" style="padding: 10px; text-align: right;">0.00 zł</td>
                                     </tr>
@@ -165,19 +165,23 @@
                     </div>
                 </div>
 
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Spółka</th>
-                            <th>Cena</th>
-                            <th>Zmiana (1D)</th>
-                            <th>P/E</th>
-                            <th>PEG</th>
-                            <th>Akcje</th>
-                        </tr>
-                    </thead>
-                    <tbody id="watchlist-tbody"></tbody>
-                </table>
+                <div style="max-height: 84vh; overflow-y: auto; border-radius: 6px; position: fixed; left: 0; right: 0; top: 50px;" >
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Spółka</th>
+                                <th>Cena</th>
+                                <th>Zmiana (1D)</th>
+                                <th>P/E</th>
+                                <th>PEG</th>
+                                <th class="fmp-column">Wycena DCF</th>
+                                <th class="fmp-column">Target Price</th>
+                                <th> </th>
+                            </tr>
+                        </thead>
+                        <tbody id="watchlist-tbody"></tbody>
+                    </table>
+                </div>
             </div>
 
 
@@ -189,7 +193,7 @@
 
 
 
-            <div id="history" class="tab-content">
+            <div id="history" class="tab-content" style="gap: 0px">
 
                 <div class="header">
                     <h1>Historia Wpłat</h1>
@@ -206,18 +210,18 @@
                 
 
                 <!-- Dodany kontener wymuszający przewijanie samej tabeli, a nie całej strony -->
-                <div style="max-height: 70vh; overflow-y: auto; border-radius: 6px;">
+                <div style="max-height: 84vh; overflow-y: auto; border-radius: 6px; position: fixed; left: 0; right: 0; top: 50px;" >
                     <table class="data-table" style="margin: 0;">
                         <!-- 'sticky' przykleja nagłówek do góry -->
                         <thead style="position: sticky; top: 0; z-index: 10;">
                             <tr>
                                 <!-- Dodane tło, aby tekst pod spodem nie prześwitywał podczas przewijania -->
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Data</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kwota wpłaty</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kurs NBP</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Wartość w PLN</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Konto</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);"> </th>
+                                <th style="  box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Data</th>
+                                <th style="  box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kwota wpłaty</th>
+                                <th style="  box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kurs NBP</th>
+                                <th style="  box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Wartość w PLN</th>
+                                <th style="  box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Konto</th>
+                                <th style="  box-shadow: 0 1px 0 rgba(255,255,255,0.1);"> </th>
                             </tr>
                         </thead>
                         <tbody id="deposits-tbody"></tbody>
@@ -230,7 +234,8 @@
                 <div class="header">
                     <h1>Zyski i Podatki</h1>
                     <div style="display: flex; gap: 10px;">
-                        <button class="nav-btn" title="Wprowadzone Zyski" data-target="profits-list" style="color: var(--text-color); font-size: 20px; padding-top: 12px"> <i class="fas fa-list"></i></button>
+                        <button class="nav-btn" title="Kalkulator wielu przelewów walutowych" data-target="calculator" style="color: var(--text-color); font-size: 10px !important; padding-top: 12px; margin-right: 20px;"><i class="fa-solid fa-calculator"></i></button>
+                        <button class="nav-btn" title="Wszystkie Wpisy" data-target="profits-list" style="color: var(--text-color); font-size: 20px; padding-top: 12px"> <i class="fas fa-list"></i></button>
                         <button id="btn-new-profit" class="btn primary" title="Dodaj zysk"><i class="fa-solid fa-plus"></i></button>
                     </div>
                 </div>
@@ -241,26 +246,26 @@
                 </div>
 
                             <!-- ZAKŁADKA Historia zysków -->
-            <div id="profits-list" class="tab-content">
+            <div id="profits-list" class="tab-content" style="gap: 0px">
                 <div class="header" style="display: flex; align-items: center; gap: 15px;">
                     <div style="display: flex">
                                     <!-- PRZYCISK WSTECZ -->
                         <button id="btn-back-to-profits" class="btn primary" title="Wróć do zestawienia zysków">
                         <i class="fa-solid fa-chevron-left"></i>
                         </button>
-                        <h1>Wprowadzone Zyski</h1>
+                        <h1>Wszystkie Wpisy</h1>
                         </div>
                     </div>
-                <div style="max-height: 50vh; overflow-y: auto; border-radius: 6px; margin-bottom: 40px;">
+                <div style="max-height: 84vh; overflow-y: auto; border-radius: 6px; position: fixed; left: 0; right: 0; top: 50px;">
                     <table class="data-table" style="margin: 0;">
                         <thead style="position: sticky; top: 0; z-index: 10;">
                             <tr>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Data</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Konto (Źródło)</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kategoria</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Zysk brutto</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Podatek</th>
-                                <th style="background-color: #2a2d2e; box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Akcje</th>
+                                <th style="box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Data</th>
+                                <th style="box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Konto</th>
+                                <th style="box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Kategoria</th>
+                                <th style="box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Zysk brutto</th>
+                                <th style="box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Podatek</th>
+                                <th style="box-shadow: 0 1px 0 rgba(255,255,255,0.1);">Akcje</th>
                             </tr>
                         </thead>
                         <tbody id="profits-list-tbody"></tbody>
@@ -268,6 +273,61 @@
                 </div>
                 
             </div>
+
+                                        <!-- ZAKŁADKA Kalkulator -->
+            <div id="calculator" class="tab-content">
+                <div class="header" style="display: flex; align-items: center; gap: 15px;">
+                    <div style="display: flex">
+                        <!-- PRZYCISK WSTECZ -->
+                        <button id="btn-back-to-profits-2" class="btn primary" title="Wróć do zestawienia zysków">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <h1>Kalkulator wielu przelewów walutowych</h1>
+                    </div>
+                </div>
+                
+                <div>
+                    <small style="margin-bottom: 20px; display: block; color: rgba(120, 120, 120, 0.8)">
+                        Wybierz walutę przelewu. Następnie wprowadź dane ręcznie lub zaimportuj plik CSV.
+                    </small>
+                </div>
+
+                <!-- Panel sterowania -->
+                <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <label for="currency-select">Waluta:</label>
+                        <select id="currency-select" class="btn secondary">
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="csv-upload" class="btn primary" style="cursor: pointer;">
+                            <i class="fa-solid fa-upload"></i> Importuj CSV
+                        </label>
+                        <input type="file" id="csv-upload" accept=".csv" style="display: none;">
+                    </div>
+                </div>
+
+                <!-- Kontener na wiersze z przelewami -->
+                <div id="rows-container" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Wiersze będą wstrzykiwane przez TypeScript -->
+                </div>
+
+                <!-- Przycisk dodawania kolejnych wierszy -->
+                <button id="btn-add-row" class="btn secondary" style="margin-top: 15px;">
+                    <i class="fa-solid fa-plus"></i> Dodaj przelew
+                </button>
+
+                <!-- Podsumowanie -->
+                <div class="summary" style="margin-top: 30px; padding: 15px; border-top: 1px solid rgba(120, 120, 120, 0.3);">
+                    <h3>Podsumowanie</h3>
+                    <p style="font-size: 1.2em;">Łącznie w walucie: <strong><span id="total-currency">0.00</span> <span id="currency-label">USD</span></strong></p>
+                    <p style="font-size: 1.2em;">Łącznie w PLN: <strong><span id="total-pln">0.00</span> PLN</strong></p>
+                </div>
+            </div>
+
 
     <!-- ZAKŁADKA OBLIGACJI -->
             <div id="portfolio-bonds" class="tab-content">
@@ -278,7 +338,7 @@
 
                 <small style="margin-bottom: 20px; display: block; color: rgba(120, 120, 120, 0.8)">Oprócz obligacji z rynku pierwotnego, dodaj tu obligacje skarbowe i korporacyjne kupione na giełdzie. W ich przypadku zyski z kuponów i należny podatek zostaną automatycznie obliczone i dodane do zakładki <i>Zyski i Podatki</i> w dniu wypłaty kuponu.</small>
                 
-                <div style="height: 400px; margin-bottom: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background-color: #1e1e1e; position: relative;">
+                <div style="height: 400px; margin-bottom: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; position: relative;">
                     <canvas id="bondsTreemap"></canvas>
                 </div>
 
@@ -291,7 +351,7 @@
                             <th>Ilość / Cena</th>
                             <th>Wartość całkowita</th>
                             <th>Informacje o Kuponie</th>
-                            <th>Akcje (Zarządzaj)</th>
+                            <th> </th>
                         </tr>
                     </thead>
                     <tbody id="bonds-tbody"></tbody>
@@ -315,7 +375,7 @@
                     </small>
                 </div>
                 
-                <div style="height: 400px; margin-bottom: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background-color: #1e1e1e; position: relative;">
+                <div style="height: 400px; margin-bottom: 30px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; position: relative;">
                     <canvas id="stocksTreemap"></canvas>
                 </div>
 
@@ -327,8 +387,7 @@
                             <th>Data zakupu</th>
                             <th>Ilość / Cena</th>
                             <th>Wartość całkowita</th>
-                            <th>Informacje o Kuponie</th>
-                            <th>Akcje (Zarządzaj)</th>
+                            <th> </th>
                         </tr>
                     </thead>
                     <tbody id="stocks-tbody"></tbody>
@@ -369,19 +428,35 @@
                     <input type="date" id="dep-date">
                 </div>
                 <small style="margin-bottom: 20px; display: block; color: rgba(120, 120, 120, 0.8)">Dla wypłat wpisz ujemną kwotę.</small>
+
                 <div class="form-row">
                     <div class="form-group">
                         <label>Kwota</label>
                         <input type="number" id="dep-amount" step="0.01">
                     </div>
                     <div class="form-group">
-                        <label>Waluta</label>
+                        <label>Waluta wpłaty</label>
                         <select id="dep-currency">
                             <option value="PLN">PLN</option>
                             <option value="USD">USD</option>
                             <option value="EUR">EUR</option>
                         </select>
                     </div>
+                </div>
+
+                <!-- NOWE: Przewalutowanie -->
+                <div class="form-group" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 5px; margin-bottom: 5px;">
+                    <input type="checkbox" id="dep-is-conversion" style="width: auto; cursor: pointer;">
+                    <label for="dep-is-conversion" style="margin: 0; cursor: pointer;">Przewalutowanie przy wpłacie</label>
+                </div>
+                
+                <div class="form-group" id="dep-target-currency-group" style="display: none; margin-top: 10px;">
+                    <label>Waluta docelowa</label>
+                    <select id="dep-target-currency">
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="PLN">PLN</option>
+                    </select>
                 </div>
                 <div class="rate-info" id="dep-rate-info"></div>
 
@@ -430,6 +505,8 @@
 
             <input type="file" id="pko-import-file" accept=".csv,.xls,.xlsx" style="display: none;">
             <button id="btn-pko-import" class="btn secondary" title="Importuj odsetki" style="white-space: nowrap; display: none; min-width: 150px; margin-bottom: 15px;">Wybierz plik CSV</button>
+
+            <div id="tax-warning" style="display: none; padding: 10px; margin-top: 15px; margin-bottom: 15px; background: rgba(255, 152, 0, 0.1); border: 1px solid #ff9800; border-radius: 4px; color: #ff9800; font-size: 13px;"></div>
 
 
             <div class="form-group">
@@ -486,18 +563,28 @@
                     <label>Nazwa (np. Microsoft (USA), KruK)</label>
                     <input type="text" id="asset-name">
                 </div>
+
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form-group" style="flex: 1.5;">
                         <label>Cena za jednostkę</label>
                         <input type="number" id="asset-price" step="0.01">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Waluta</label>
+                        <select id="asset-currency">
+                            <option value="PLN">PLN</option>
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1.5;">
                         <label>Ilość</label>
                         <input type="number" id="asset-quantity" step="0.0001">
                     </div>
                 </div>
+
                 
-                <div id="asset-coupon-fields" style="display: none; background: #2a2d2e; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
+                <div id="asset-coupon-fields" style="display: none; padding: 15px; border-radius: 6px; margin-bottom: 15px;">
                     <h4 style="margin-top: 0; margin-bottom: 10px; color: #fff;">Dane Kuponu</h4>
                     <div class="form-row">
                         <div class="form-group">
@@ -509,7 +596,7 @@
                             <input type="number" id="asset-coupon-rate" step="0.01">
                         </div>
                         <div class="form-group">
-                            <label>Częstość</label>
+                            <label>Częstotliwość</label>
                             <select id="asset-coupon-freq">
                                 <option value="Roczna">Roczna</option>
                                 <option value="Półroczna">Półroczna</option>
@@ -705,6 +792,32 @@
                         <option value="light">Jasny</option>
                     </select>
                 </div>
+
+                <!-- NOWE POLE NA KLUCZ API -->
+
+                <!-- Przełącznik FMP -->
+                 <div>
+                    <div class="form-group" style="margin-top: 25px; flex-direction: row; justify-content: space-between; align-items: center;">
+                        <div>
+                            <label style="margin-bottom: 0; font-weight: bold; color: var(--text-color);">Zaawansowane wyceny</label>
+                            <small style="color: #aaa; display: block; margin-top: 5px;">Pobiera wycenę DCF i Target Price w Liście Obserwowanych (wymaga klucza API z FMP).</small>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="setting-fmp-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <!-- Pole na klucz API (ukrywane automatycznie, jeśli suwak jest wyłączony) -->
+                    
+                    <div class="form-group" id="fmp-api-key-container" style="display: none; margin-top: 15px;">
+                       <div style="display: flex; justify-content: space-between;">
+                        <label>Klucz API do wyceny FMP</label>
+                        <input style="min-width: 100%" type="text" id="setting-fmp-api-key" placeholder="Wklej darmowy klucz z financialmodelingprep.com">
+                        </div>
+                    </div>
+                </div>
+                
                 
                 <div class="form-group">
                     <label style="margin-bottom: 15px">Styl inwestowania</label>
@@ -719,15 +832,19 @@
                 </div>
 
 
+
                 <div class="form-group" style="margin-top: 25px;">
-                    
+
+    
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <label>Konta w Biurach Maklerskich</label>
                         <button id="btn-open-add-broker" class="btn primary"><i class="fa-solid fa-plus"></i></button>
                     </div>
+                    <div display="block" style="padding: 10px; margin-top: 15px; margin-bottom: 15px; background: rgba(255, 152, 0, 0.1); border: 1px solid #ff9800; border-radius: 4px; color: #ff9800; font-size: 13px;"><i class="fa-solid fa-circle-info"></i> Jeśli dotyczy: pamiętaj, aby w nazwie uwzględnić typ konta - <i>IKE</i>, <i>IKZE</i>, <i>OKI</i> lub <i>OIPE</i>.</div>
                     <div id="setting-brokers-list" style="background-color: var(--input-bg); padding: 10px; border-radius: 6px; border: 1px solid var(--btn-border); max-height: 150px; overflow-y: auto;">
                     </div>
                 </div>
+                <small style="rgba(120, 120, 120, 0.8)">2026. Autor aplikacji: Paweł Lisik.</small>
             </div>
         </div>
 
@@ -742,7 +859,7 @@
 
                 <!-- WIDOK EDYCJI (Ukryty domyślnie) -->
                 <div id="strategy-edit-mode" class="hidden">
-                    <textarea id="strategy-textarea" rows="15" style="width: 100%; box-sizing: border-box; padding: 15px; background-color: #1e1e1e; color: #fff; border: 1px solid var(--accent); border-radius: 6px; font-family: inherit; resize: vertical; line-height: 1.5;" placeholder="Wpisz lub wklej zasady swojej strategii...&#10;np.&#10;1. Zawsze chroń kapitał.&#10;2. Używaj stop lossów."></textarea>
+                    <textarea id="strategy-textarea" rows="15" style="width: 100%; box-sizing: border-box; padding: 15px; border: 1px solid var(--accent); border-radius: 6px; font-family: inherit; resize: vertical; line-height: 1.5;" placeholder="Wpisz lub wklej zasady swojej strategii...&#10;np.&#10;1. Zawsze chroń kapitał.&#10;2. Używaj stop lossów."></textarea>
                 </div>
 
                 <div class="modal-actions" style="margin-top: 20px; display: flex; justify-content: flex-end;">
@@ -767,7 +884,7 @@
                     <select id="setting-new-broker-type">
                         <option value="Akcje">Akcje</option>
                         <option value="Obligacje skarbowe krajowe">Obligacje skarbowe krajowe</option>
-                        <option value="Obligacje korporacyjne i zagraniczne">Obligacje korporacyjne i zagr.</option>
+                        <option value="Obligacje korporacyjne i zagraniczne">Obligacje korporacyjne i zagraniczne</option>
                         <option value="Konta oszczędnościowe">Konta oszczędnościowe</option>
                         <option value="Kryptowaluty">Kryptowaluty</option>
                         <option value="Metale szlachetne">Metale szlachetne</option>
@@ -799,19 +916,35 @@
                         <select id="transfer-to"></select>
                     </div>
                 </div>
+
                 <div class="form-row">
                     <div class="form-group">
                         <label>Kwota transferu</label>
                         <input type="number" id="transfer-amount" step="0.01">
                     </div>
                     <div class="form-group">
-                        <label>Waluta</label>
+                        <label>Waluta (z konta)</label>
                         <select id="transfer-currency">
                             <option value="PLN">PLN</option>
                             <option value="USD">USD</option>
                             <option value="EUR">EUR</option>
                         </select>
                     </div>
+                </div>
+
+                <!-- NOWE: Przewalutowanie w transferze -->
+                <div class="form-group" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 5px; margin-bottom: 5px;">
+                    <input type="checkbox" id="transfer-is-conversion" style="width: auto; cursor: pointer;">
+                    <label for="transfer-is-conversion" style="margin: 0; cursor: pointer;">Przewalutowanie w trakcie transferu</label>
+                </div>
+                
+                <div class="form-group" id="transfer-target-currency-group" style="display: none; margin-top: 10px;">
+                    <label>Docelowa waluta na 2. koncie</label>
+                    <select id="transfer-target-currency">
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="PLN">PLN</option>
+                    </select>
                 </div>
                 <div class="rate-info" id="transfer-rate-info" style="color: #aaa; font-size: 12px; margin-bottom: 15px;"></div>
                 <div class="modal-actions">
@@ -823,36 +956,37 @@
 
         <!-- MODAL IMPORT/EKSPORT CSV -->
         <div id="modal-csv" class="modal hidden" style="z-index: 3400;">
-            <div class="modal-box" style="width: 550px; position: relative;">
+            <div class="modal-box" style="width: 800px; position: relative;">
                 <button id="btn-close-csv" class="btn" style="position: absolute; top: 15px; right: 15px; background: transparent; border: none; font-size: 20px; cursor: pointer; color: #888;"><i class="fa-solid fa-circle-xmark"></i></button>
                 <h2 style="margin-top: 0;">Importuj / eksportuj historię</h2>
                 
                 <div style="margin-bottom: 20px;">
-                    <p style="font-size: 13px; color: #aaa; margin-bottom: 10px;">Obsługiwany format pliku to <strong>CSV (rozdzielany przecinkami)</strong>. Wymagane są dokładnie 4 kolumny w stałej kolejności (nagłówki są ignorowane):</p>
-                    <ol style="font-size: 13px; color: #ddd; margin-bottom: 0; padding-left: 20px;">
+                    <p style="font-size: 13px; color: rgba(120, 120, 120, 0.8); margin-bottom: 10px;">Obsługiwany format pliku to <strong>CSV (rozdzielany przecinkami)</strong>. Wymagane są dokładnie 4 kolumny w stałej kolejności (nagłówki są ignorowane):</p>
+                    <ol style="font-size: 13px; color: rgba(120, 120, 120, 0.8); margin-bottom: 0; padding-left: 20px;">
                         <li><strong>Data:</strong> format RRRR-MM-DD (np. 2024-05-12)</li>
-                        <li><strong>Kwota:</strong> sama wartość (np. 1500 lub 1500,50)</li>
-                        <li><strong>Waluta:</strong> PLN, USD lub EUR</li>
-                        <li><strong>Konto:</strong> dokładna nazwa (np. XTB, BM PKO)</li>
+                        <li><strong>Kwota:</strong> sama wartość bez spacji czy znaków innych niz przecinek dla groszy lub centów (np. 1500 lub 1500,50)</li>
+                        <li><strong>Waluta wpłaty:</strong> PLN, USD lub EUR</li>
+                        <li><strong>Waluta docelowa</strong> (tylko dla przewalutowań przy wpłacie; brak przewalutowania - zostaw puste)<strong>:</strong> PLN, USD lub EUR</li>
+                        <li><strong>Konto:</strong> nazwa bez typu aktywów (np. XTB, BM PKO)</li>
                     </ol>
                 </div>
 
                 <div style="display: flex; gap: 15px; justify-content: space-between;">
                     <!-- SEKCJA EKSPORTU -->
-                    <div style="flex: 1; padding: 20px; background-color: #1e1e1e; border: 1px solid var(--border); border-radius: 6px; text-align: center;">
+                    <div style="flex: 1; padding: 20px; background-color: var(--widget-background); border: 1px solid var(--widget-border); border-radius: 6px; text-align: center;">
                         <i class="fa-solid fa-file-export" style="font-size: 24px; color: var(--accent); margin-bottom: 10px; display: block;"></i>
                         <h4 style="margin: 0 0 10px 0;">Eksportuj historię</h4>
                         <p style="font-size: 12px; color: #888; margin-bottom: 20px; min-height: 35px;">Zapisz obecną historię wpłat w formie pliku CSV - do odczytu w Excel lub Numbers.</p>
-                        <button id="btn-export-csv" class="btn secondary" style="width: 100%;">Eksportuj Plik</button>
+                        <button id="btn-export-csv" class="btn secondary" style="width: 150px;">Eksportuj Plik</button>
                     </div>
                     
                     <!-- SEKCJA IMPORTU -->
-                    <div style="flex: 1; padding: 20px; background-color: #1e1e1e; border: 1px solid var(--border); border-radius: 6px; text-align: center;">
+                    <div style="flex: 1; padding: 20px; background-color: var(--widget-background); border: 1px solid var(--widget-border); border-radius: 6px; text-align: center;">
                         <i class="fa-solid fa-file-import" style="font-size: 24px; color: #4CAF50; margin-bottom: 10px; display: block;"></i>
                         <h4 style="margin: 0 0 10px 0;">Importuj transakcje</h4>
                         <p style="font-size: 12px; color: #888; margin-bottom: 20px; min-height: 35px;">Dodaj historię wpłat z pliku CSV wyeksportowanego z Excel lub Numbers.</p>
                         <input type="file" id="csv-import-file" accept=".csv" style="display: none;">
-                        <button id="btn-trigger-import-csv" class="btn secondary" style="width: 100%;">Wybierz plik CSV</button>
+                        <button id="btn-trigger-import-csv" class="btn secondary" style="width: 150px;">Wybierz plik CSV</button>
                     </div>
                 </div>
             </div>

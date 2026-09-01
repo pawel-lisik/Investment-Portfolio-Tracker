@@ -5,7 +5,7 @@
 :root {
     --bg-color: #242321;
     --page-header: rgba(37, 37, 38, 0.5);
-    --bottom-bar-bg: #252526;
+    --bottom-bar-bg: rgba(37, 37, 38, 0.5);
     --menu-border: rgba(255, 255, 255, 0.10);
     --text-color: #d4d4d4;
     --widget-background: #282725;
@@ -22,6 +22,7 @@
     --red: #ff383c;
     --purple: #6155f5;
     --input-bg: #434241;
+    --table-bg: #434241;
 }
 
 .light-mode {
@@ -32,10 +33,10 @@
     --text-color: #333;
     --widget-background: #f2f2f2;
     --widget-border: #e7e7e7;
-    --accent: rgba(225, 172, 21, 0.9);
+    --accent: #ff9230;
     --btn-accent-border: #005f9e;
     --accent-hover: #005f9e;
-    --border: #3e3e42;
+    --border: #c7c7c7;
     --btn: #fff;
     --btn-border: #ccc;
     --nav-btn-active-bg: rgba(220, 220, 220, 0.5);
@@ -44,6 +45,7 @@
     --red: #ff383c;
     --purple: #6155f5;
     --input-bg: #fff;
+    --table-bg: #fff;
 }
 
 /* --- STYLE DOLNEGO PASKA (BOTTOM BAR) --- */
@@ -196,13 +198,13 @@ body {
     border: 1px solid var(--btn-border);
     color: var(--text-color);
     border-radius: 8px;
-    width: 86px;
+    min-width: 86px;
 }
 
 .btn.accent {
     background-color: var(--accent);
     border: 1px solid var(--btn-accent-border);
-    border-radius: 15px;
+    border-radius: 8px;
 }
 
 .stats-grid {
@@ -247,19 +249,39 @@ body {
 }
 
 .data-table {
-    width: 100%;
+    width: 100% !important;;
     border-collapse: collapse;
-    margin-top: 20px;
+    min-width: 100% !important;
+    table-layout: auto;
 }
 
 .data-table th, .data-table td {
     padding: 12px;
     text-align: left;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--widget-border);
+    background-color: var(--table-bg) ;
 }
 
+/* 1. Nakładamy taflę szkła na CAŁY nagłówek, a nie pojedyncze komórki */
+.data-table thead {
+    background-color: var(--bottom-bar-bg); /* Upewnij się, że tło nie jest lite! Musi mieć przezroczystość (np. 0.8) */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    
+    /* Przenosimy dolną linię na cały nagłówek */
+    box-shadow: 0 1px 0 var(--menu-border); 
+    
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* 2. Same komórki wewnątrz nagłówka muszą być "puste", żeby szkło pod spodem działało */
 .data-table th {
-    background-color: var(--bottom-bar-bg);
+    background-color: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important; /* Usuwamy linie między komórkami */
     color: var(--text-color);
 }
 
@@ -352,24 +374,26 @@ input:focus, select:focus, textarea:focus {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    background-color: var(--table-bg);
+    border: 1px solid var(--widget-border) !important;
 }
 
 .tax-table th, .tax-table td {
     padding: 10px;
     text-align: right;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--widget-border);
 }
 
 .tax-table th {
-    background-color: #2a2d2e;
-    color: #ccc;
-    font-weight: normal;
+    background-color: var(--bottom-bar-bg);
+    color: var(--text-color);
+    font-weight: bold;
 }
 
 .tax-table th:first-child, .tax-table td:first-child {
     text-align: left;
     font-weight: bold;
-    color: #fff;
+    color: var(--text-color);
 }
 
 .tax-value {
@@ -441,3 +465,44 @@ textarea {
     font-family: inherit;
     resize: vertical;
 }
+
+
+/* Przełącznik suwakowy (Toggle Switch) */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: var(--input-bg);
+  border: 1px solid var(--btn-border);
+  transition: .3s;
+}
+.switch .slider:before {
+  position: absolute;
+  content: "";
+  height: 16px; width: 16px;
+  left: 3px; bottom: 3px;
+  background-color: var(--text-color);
+  transition: .3s;
+}
+.switch input:checked + .slider {
+  background-color: var(--accent);
+  border-color: var(--btn-accent-border);
+}
+.switch input:checked + .slider:before {
+  transform: translateX(20px);
+  background-color: #fff;
+}
+.switch .slider.round { border-radius: 24px; }
+.switch .slider.round:before { border-radius: 50%; }
